@@ -1,27 +1,50 @@
+let currentRecapAudio = null;
+
 function initRecapsView() {
   const container = document.getElementById("view-recaps");
   container.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 14px;">
       <div class="card">
-        <label>ရုပ်ရှင် ဗီဒီယိုအပိုင်း တင်ပါ</label>
+        <label>🎬 ရုပ်ရှင် ဗီဒီယိုအပိုင်း တင်ပါ</label>
         <input type="file" id="recap-video-file" accept="video/*" />
       </div>
 
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label>အသံသရုပ်ဆောင်</label>
+          <label>🗣️ အသံသရုပ်ဆောင် / Engine</label>
           <select id="recap-voice-actor">
-            <option value="my-MM-ThihaNeural">သီဟ (အမျိုးသား)</option>
-            <option value="my-MM-NilarNeural">နီလာ (အမျိုးသမီး)</option>
+            <option value="edge-thiha">Edge-TTS: သီဟ (ကျား)</option>
+            <option value="edge-nilar">Edge-TTS: နီလာ (မ)</option>
+            <option value="google-my">Google TTS: မြန်မာအသံ</option>
           </select>
         </div>
         <div>
-          <label>Recap စတိုင်</label>
+          <label>🎭 Recap စတိုင်</label>
           <select id="recap-tone">
-            <option value="concise">ရှင်းလင်း အနှစ်ချုပ်</option>
-            <option value="funny">ဟာသ / ဆယ်လီစတိုင်</option>
-            <option value="dramatic">စိတ်လှုပ်ရှားဖွယ် ဇာတ်လမ်း</option>
+            <option value="horror">👻 သရဲ / ထိတ်လန့်ဖွယ် ဇာတ်လမ်း</option>
+            <option value="funny">😂 ဟာသ / ဆယ်လီစတိုင်</option>
+            <option value="dramatic">🔥 စိတ်လှုပ်ရှားဖွယ် ဇာတ်လမ်း</option>
+            <option value="concise">⚡ ရှင်းလင်း အနှစ်ချုပ်</option>
           </select>
+        </div>
+      </div>
+
+      <!-- Volume Controls (Dual Sliders) -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;">
+            <span style="color: #94a3b8;">🎥 မူရင်း ဗီဒီယိုအသံ (Original Video)</span>
+            <span id="vol-video-val" style="color: #38bdf8; font-weight: bold;">30%</span>
+          </div>
+          <input type="range" id="vol-video-slider" min="0" max="100" value="30" style="width: 100%; cursor: pointer;" />
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;">
+            <span style="color: #94a3b8;">🎙️ AI နောက်ခံစကားပြော (Voiceover)</span>
+            <span id="vol-ai-val" style="color: #10b981; font-weight: bold;">100%</span>
+          </div>
+          <input type="range" id="vol-ai-slider" min="0" max="100" value="100" style="width: 100%; cursor: pointer;" />
         </div>
       </div>
 
@@ -29,33 +52,29 @@ function initRecapsView() {
         <span>▶ Recap ဗီဒီယို ဖန်တီးမည်</span>
       </button>
 
-      <!-- အဆင့်လိုက် လုပ်ငန်းစဉ်နှင့် Progress UI -->
+      <!-- Progress UI -->
       <div id="recap-progress-container" style="display: none; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 14px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
           <span id="recap-step-title" style="color: #38bdf8; font-weight: bold;">စတင်နေပါသည်...</span>
           <span id="recap-step-percent" style="color: #facc15; font-weight: bold;">0%</span>
         </div>
-        
-        <!-- Progress Bar -->
         <div style="width: 100%; height: 8px; background: #0f172a; border-radius: 6px; overflow: hidden; margin-bottom: 10px;">
           <div id="recap-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s ease;"></div>
         </div>
-
-        <!-- အသုံးပြုနေသော Models Status Badges -->
         <div style="display: flex; flex-direction: column; gap: 6px; font-size: 0.75rem;">
-          <div id="model-badge-stt" style="color: #64748b;">⏳ <b>STT:</b> Groq Whisper-large-v3 (အသံမှ စာသားဖတ်ယူမှု)</div>
-          <div id="model-badge-llm" style="color: #64748b;">⏳ <b>LLM:</b> Gemini 3.6-flash (Recap Script ရေးသားမှု)</div>
-          <div id="model-badge-tts" style="color: #64748b;">⏳ <b>TTS:</b> HF ZeroGPU - Edge-TTS (မြန်မာအသံဖန်တီးမှု)</div>
+          <div id="model-badge-stt" style="color: #64748b;">⏳ <b>STT:</b> Groq Whisper-large-v3 (အသံဖတ်ယူမှု)</div>
+          <div id="model-badge-llm" style="color: #64748b;">⏳ <b>LLM:</b> Gemini 3.6-flash (Recap ရေးသားမှု)</div>
+          <div id="model-badge-tts" style="color: #64748b;">⏳ <b>TTS:</b> Multi-Engine Neural Audio (အသံဖန်တီးမှု)</div>
         </div>
       </div>
 
-      <!-- Error ပြသရန် Box -->
+      <!-- Error Box -->
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5; word-break: break-word;"></div>
 
-      <!-- ရလဒ်ပြသရန် Box -->
+      <!-- Result Box -->
       <div id="recap-result-box" style="display: none; flex-direction: column; gap: 12px;">
         <div class="card">
-          <label>ထုတ်လုပ်ထားသော Recap စာသား</label>
+          <label>📝 ထုတ်လုပ်ထားသော Recap စာသား</label>
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
@@ -63,9 +82,25 @@ function initRecapsView() {
       </div>
     </div>
   `;
+
+  // Volume Slider Event Listeners
+  const videoSlider = document.getElementById("vol-video-slider");
+  const aiSlider = document.getElementById("vol-ai-slider");
+  const videoPlayer = document.getElementById("recap-video-player");
+
+  videoSlider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    document.getElementById("vol-video-val").innerText = `${val}%`;
+    if (videoPlayer) videoPlayer.volume = val / 100;
+  });
+
+  aiSlider.addEventListener("input", (e) => {
+    const val = e.target.value;
+    document.getElementById("vol-ai-val").innerText = `${val}%`;
+    if (currentRecapAudio) currentRecapAudio.volume = val / 100;
+  });
 }
 
-// Progress Bar အဆင့်မြှင့်တင်ခြင်း Helper
 function updateRecapProgress(percent, title, activeModel = null) {
   const pContainer = document.getElementById("recap-progress-container");
   const pBar = document.getElementById("recap-progress-bar");
@@ -77,96 +112,78 @@ function updateRecapProgress(percent, title, activeModel = null) {
   if (pPercent) pPercent.innerText = `${percent}%`;
   if (pTitle) pTitle.innerText = title;
 
-  const badgeSTT = document.getElementById("model-badge-stt");
-  const badgeLLM = document.getElementById("model-badge-llm");
-  const badgeTTS = document.getElementById("model-badge-tts");
+  const bSTT = document.getElementById("model-badge-stt");
+  const bLLM = document.getElementById("model-badge-llm");
+  const bTTS = document.getElementById("model-badge-tts");
 
-  if (activeModel === "stt" && badgeSTT) {
-    badgeSTT.style.color = "#38bdf8";
-  } else if (activeModel === "llm" && badgeLLM) {
-    if (badgeSTT) badgeSTT.style.color = "#10b981";
-    badgeLLM.style.color = "#38bdf8";
-  } else if (activeModel === "tts" && badgeTTS) {
-    if (badgeLLM) badgeLLM.style.color = "#10b981";
-    badgeTTS.style.color = "#38bdf8";
+  if (activeModel === "stt" && bSTT) {
+    bSTT.style.color = "#38bdf8";
+  } else if (activeModel === "llm" && bLLM) {
+    if (bSTT) bSTT.style.color = "#10b981";
+    bLLM.style.color = "#38bdf8";
+  } else if (activeModel === "tts" && bTTS) {
+    if (bLLM) bLLM.style.color = "#10b981";
+    bTTS.style.color = "#38bdf8";
   } else if (activeModel === "done") {
-    if (badgeTTS) badgeTTS.style.color = "#10b981";
+    if (bTTS) bTTS.style.color = "#10b981";
   }
 }
 
-// အသံကို ပေါ့ပါးသော Compressed Format (WebM/Opus) အဖြစ် ချုံ့ယူခြင်း
-async function extractAudioFromVideo(file) {
-  updateRecapProgress(15, "ဗီဒီယိုဒေတာ ချုံ့ယူရန် ပြင်ဆင်နေပါသည်...");
+// 16kHz Mono WAV အဖြစ် သေးငယ်စွာ ချုံ့ထုတ်ပေးမည့် Function
+async function extractAudioOptimized(file) {
+  updateRecapProgress(15, "ဗီဒီယိုဒေတာ ဖတ်ယူနေပါသည်...");
+  const arrayBuffer = await file.arrayBuffer();
 
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    video.preload = "metadata";
-    video.src = URL.createObjectURL(file);
+  updateRecapProgress(25, "အသံလှိုင်းများကို 16kHz သို့ ချုံ့နေပါသည်...");
+  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-    video.onloadedmetadata = async () => {
-      try {
-        updateRecapProgress(30, "အသံဖိုင်ကို အရွယ်အစား အလွန်သေးငယ်အောင် ချုံ့နေပါသည်...");
+  // 16000Hz သို့ Resample လုပ်ခြင်း
+  const targetSampleRate = 16000;
+  const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
+  const source = offlineCtx.createBufferSource();
+  source.buffer = audioBuffer;
+  source.connect(offlineCtx.destination);
+  source.start(0);
+  const resampledBuffer = await offlineCtx.startRendering();
 
-        // Browser Audio Graph ချိတ်ဆက်ခြင်း
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const source = audioCtx.createMediaElementSource(video);
-        const destination = audioCtx.createMediaStreamDestination();
-        source.connect(destination);
+  updateRecapProgress(35, "Groq ဖတ်နိုင်သော WAV အသံအဖြစ် Encode လုပ်နေပါသည်...");
+  const channelData = resampledBuffer.getChannelData(0);
+  const length = channelData.length * 2 + 44;
+  const outBuffer = new ArrayBuffer(length);
+  const view = new DataView(outBuffer);
 
-        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-          ? "audio/webm;codecs=opus"
-          : "audio/webm";
+  function writeString(pos, str) {
+    for (let i = 0; i < str.length; i++) view.setUint8(pos + i, str.charCodeAt(i));
+  }
 
-        const recorder = new MediaRecorder(destination.stream, {
-          mimeType: mimeType,
-          audioBitsPerSecond: 32000 // 32kbps ဖြင့် အသံအရွယ်အစားကို 1MB အောက်သို့ အလွန်ချုံ့ခြင်း
-        });
+  writeString(0, "RIFF");
+  view.setUint32(4, length - 8, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // Mono
+  view.setUint16(22, 1, true);
+  view.setUint32(24, targetSampleRate, true);
+  view.setUint32(28, targetSampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, length - 44, true);
 
-        const chunks = [];
-        recorder.ondataavailable = (e) => {
-          if (e.data.size > 0) chunks.push(e.data);
-        };
+  let offset = 44;
+  for (let i = 0; i < channelData.length; i++) {
+    let sample = Math.max(-1, Math.min(1, channelData[i]));
+    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    offset += 2;
+  }
 
-        recorder.onstop = async () => {
-          const audioBlob = new Blob(chunks, { type: "audio/webm" });
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64Audio = reader.result.split(",")[1];
-            resolve(base64Audio);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(audioBlob);
-        };
-
-        recorder.start();
-        video.currentTime = 0;
-        await video.play();
-
-        video.onended = () => {
-          recorder.stop();
-          audioCtx.close();
-        };
-
-        // ဗီဒီယိုသည် ရှည်လျားပါက Recap အတွက် အစပိုင်း စက္ကန့် ၆၀ သာ အများဆုံး ဖြတ်ယူခြင်း
-        setTimeout(() => {
-          if (recorder.state === "recording") {
-            recorder.stop();
-            video.pause();
-            audioCtx.close();
-          }
-        }, 60000);
-
-      } catch (err) {
-        // MediaRecorder Fallback (ရိုးရိုး Slice သုံးပြီး ချုံ့ခြင်း)
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result.split(",")[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file.slice(0, 3 * 1024 * 1024)); // 3MB သာ အများဆုံး ပေးပို့ခြင်း
-      }
-    };
-
-    video.onerror = (e) => reject(new Error("ဗီဒီယိုဖိုင် ဖတ်ယူ၍ မရပါ"));
-  });
+  let binary = "";
+  const bytes = new Uint8Array(outBuffer);
+  for (let i = 0; i < bytes.byteLength; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
 }
 
 async function handleGenerateRecap() {
@@ -178,6 +195,8 @@ async function handleGenerateRecap() {
   const scriptText = document.getElementById("recap-script-text");
   const videoPlayer = document.getElementById("recap-video-player");
   const generateBtn = document.getElementById("recap-generate-btn");
+  const videoSlider = document.getElementById("vol-video-slider");
+  const aiSlider = document.getElementById("vol-ai-slider");
 
   errorBox.style.display = "none";
   resultBox.style.display = "none";
@@ -192,30 +211,22 @@ async function handleGenerateRecap() {
   generateBtn.style.opacity = "0.5";
 
   try {
-    // အဆင့် ၁ - ပေါ့ပါးသော အသံဖိုင် ချုံ့ထုတ်ခြင်း
-    const compressedAudioBase64 = await extractAudioFromVideo(file);
+    const audioBase64 = await extractAudioOptimized(file);
 
-    // အဆင့် ၂ - Groq Whisper STT
-    updateRecapProgress(55, "Groq Whisper ဖြင့် အသံမှ စကားပြောများကို ဖတ်ယူနေပါသည်...", "stt");
+    updateRecapProgress(50, "Groq Whisper ဖြင့် အသံမှ စကားပြောများကို ဖတ်ယူနေပါသည်...", "stt");
 
-    // အဆင့် ၃ - Gemini Script ရေးသားခြင်း
     setTimeout(() => {
-      updateRecapProgress(75, "Gemini 3.6-flash ဖြင့် Recap Script ရေးသားနေပါသည်...", "llm");
+      updateRecapProgress(70, "Gemini 3.6-flash ဖြင့် Recap Script ရေးသားနေပါသည်...", "llm");
     }, 2000);
 
-    // အဆင့် ၄ - Hugging Face Edge-TTS
     setTimeout(() => {
-      updateRecapProgress(88, "HF ZeroGPU (Edge-TTS) ဖြင့် မြန်မာအသံ ထုတ်ယူနေပါသည်...", "tts");
+      updateRecapProgress(85, "မြန်မာ Neural အသံဖိုင် ဖန်တီးနေပါသည်...", "tts");
     }, 4500);
 
     const response = await fetch("/api/generate-recap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        audioBase64: compressedAudioBase64,
-        voice: voice,
-        tone: tone
-      }),
+      body: JSON.stringify({ audioBase64, voice, tone }),
     });
 
     const responseText = await response.text();
@@ -223,26 +234,27 @@ async function handleGenerateRecap() {
     try {
       data = JSON.parse(responseText);
     } catch (e) {
-      throw new Error(`Server Response Error (${response.status}): ${responseText.substring(0, 180)}`);
+      throw new Error(`Server Response: ${responseText.substring(0, 180)}`);
     }
 
-    if (!response.ok) {
-      throw new Error(data.error || `Server Error: Status ${response.status}`);
-    }
+    if (!response.ok) throw new Error(data.error || "ဖန်တီးမှု မအောင်မြင်ပါ");
 
-    // အောင်မြင်မှု အခြေအနေ
     updateRecapProgress(100, "အားလုံး အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!", "done");
     resultBox.style.display = "flex";
     scriptText.value = data.script;
 
+    // အသံနှင့် ဗီဒီယို တိုက်ဆိုင်ချိန်ညှိခြင်း
     const audioBlob = new Blob([Uint8Array.from(atob(data.voiceoverBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
-    const audioUrl = URL.createObjectURL(audioBlob);
-    const audio = new Audio(audioUrl);
+    if (currentRecapAudio) currentRecapAudio.pause();
+    currentRecapAudio = new Audio(URL.createObjectURL(audioBlob));
 
     videoPlayer.src = URL.createObjectURL(file);
-    videoPlayer.onplay = () => audio.play();
-    videoPlayer.onpause = () => audio.pause();
-    videoPlayer.onseeking = () => { audio.currentTime = videoPlayer.currentTime; };
+    videoPlayer.volume = videoSlider.value / 100;
+    currentRecapAudio.volume = aiSlider.value / 100;
+
+    videoPlayer.onplay = () => currentRecapAudio.play();
+    videoPlayer.onpause = () => currentRecapAudio.pause();
+    videoPlayer.onseeking = () => { currentRecapAudio.currentTime = videoPlayer.currentTime; };
 
   } catch (err) {
     document.getElementById("recap-progress-container").style.display = "none";
