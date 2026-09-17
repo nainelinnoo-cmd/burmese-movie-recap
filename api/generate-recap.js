@@ -1,6 +1,6 @@
 const { Groq, toFile } = require("groq-sdk");
 const { GoogleGenAI } = require("@google/genai");
-const { MsEdgeTTS } = require("edge-tts-node");
+const { MsEdgeTTS, OUTPUT_FORMAT } = require("edge-tts-node");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -29,7 +29,7 @@ async function generateBurmeseRecap(transcript) {
     }
   }
 
-  // Gemini မရပါက Groq Llama-3.3 သို့ ကူးပြောင်းခြင်း
+  // Groq Llama-3.3 Fallback
   const groqCompletion = await groq.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [
@@ -59,25 +59,29 @@ module.exports = async (req, res) => {
 
     const audioBuffer = Buffer.from(audioBase64, "base64");
 
-    // အဆင့် ၁ - Groq Whisper STT
+    // ၁။ Groq Whisper ဖြင့် အသံမှ စာသား ထုတ်ယူခြင်း
     const file = await toFile(audioBuffer, "audio.mp3");
     const transcription = await groq.audio.transcriptions.create({
       file: file,
       model: "whisper-large-v3",
     });
 
-    // အဆင့် ၂ - Gemini 3.6-flash / Groq Recap Script
+    // ၂။ Gemini 3.6-flash ဖြင့် မြန်မာ Recap Script ရေးသားခြင်း
     const burmeseScript = await generateBurmeseRecap(transcription.text);
 
-    // အဆင့် ၃ - Edge-TTS အသံထုတ်ယူခြင်း
+    // ၃။ Edge-TTS အသံထုတ်ယူခြင်း (agent error နှင့် stream ပျက်ကျမှု ကာကွယ်ထားသော အပိုင်း)
     let ttsAudioBuffer;
     try {
-      const tts = new MsEdgeTTS();
-      await tts.setMetadata("my-MM-ThihaNeural", "audio-24khz-48kbitrate-mono-mp3");
-      const readable = tts.toStream(burmeseScript);
+      const ttsOptions = {};
+      const tts = new MsEdgeTTS(ttsOptions);
+      const format = OUTPUT_FORMAT ? OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3 : "audio-24khz-48kbitrate-mono-mp3";
+      await tts.setMetadata("my-MM-ThihaNeural", format);
+
+      const streamResult = tts.toStream(burmeseScript, ttsOptions);
+      const stream = streamResult?.audioStream || streamResult;
 
       const chunks = [];
-      for await (const chunk of readable) {
+      for await (const chunk of stream) {
         chunks.push(chunk);
       }
       ttsAudioBuffer = Buffer.concat(chunks);
@@ -91,7 +95,6 @@ module.exports = async (req, res) => {
     });
   } catch (error) {
     console.error("Backend Error Detail:", error);
-    // Error အစစ်အမှန်ကို Screen ပေါ် အတိအကျ ဖော်ပြပေးရန် ပြင်ဆင်ထားခြင်း
     return res.status(500).json({
       error: error.message || error.toString() || "Server Process ပျက်ကျသွားပါသည်",
     });
