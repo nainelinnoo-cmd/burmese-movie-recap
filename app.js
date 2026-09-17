@@ -1,5 +1,5 @@
-import { FFmpeg } from "https://unpkg.com/@ffmpeg/ffmpeg@0.12.10/dist/esm/index.js";
-import { fetchFile } from "https://unpkg.com/@ffmpeg/util@0.12.1/dist/esm/index.js";
+import { FFmpeg } from "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/+esm";
+import { fetchFile, toBlobURL } from "https://cdn.jsdelivr.net/npm/@ffmpeg/util@0.12.1/+esm";
 
 const ffmpeg = new FFmpeg();
 const videoInput = document.getElementById("videoInput");
@@ -12,33 +12,48 @@ processBtn.addEventListener("click", async () => {
   const file = videoInput.files[0];
   if (!file) return alert("ဗီဒီယိုဖိုင် ရွေးချယ်ပေးပါ");
 
-  status.innerText = "FFmpeg Core Load လုပ်နေပါသည်...";
-  if (!ffmpeg.loaded) await ffmpeg.load();
+  try {
+    processBtn.disabled = true;
 
-  status.innerText = "ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်နေပါသည်...";
-  await ffmpeg.writeFile("input.mp4", await fetchFile(file));
-  await ffmpeg.exec(["-i", "input.mp4", "-vn", "-ar", "16000", "-ac", "1", "-b:a", "32k", "audio.mp3"]);
-  
-  const audioData = await ffmpeg.readFile("audio.mp3");
-  const audioBlob = new Blob([audioData.buffer], { type: "audio/mp3" });
-  
-  const reader = new FileReader();
-  reader.readAsDataURL(audioBlob);
-  reader.onloadend = async () => {
-    const audioBase64 = reader.result.split(",")[1];
+    // FFmpeg Core ကို Blob URL ဖြင့် တိုက်ရိုက်ဆွဲတင်ခြင်း
+    if (!ffmpeg.loaded) {
+      status.innerText = "FFmpeg Core ကို စတင်ဒေါင်းလုဒ်ဆွဲနေပါသည် (ခဏစောင့်ပေးပါ)...";
+      const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+      await ffmpeg.load({
+        coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
+        wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+      });
+    }
+
+    status.innerText = "ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်နေပါသည်...";
+    await ffmpeg.writeFile("input.mp4", await fetchFile(file));
+    await ffmpeg.exec(["-i", "input.mp4", "-vn", "-ar", "16000", "-ac", "1", "-b:a", "32k", "audio.mp3"]);
+
+    const audioData = await ffmpeg.readFile("audio.mp3");
+    const audioBlob = new Blob([audioData.buffer], { type: "audio/mp3" });
+
+    status.innerText = "AI ဆီသို့ အသံဖိုင် ပေးပို့နေပါသည်...";
+    const audioBase64 = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(",")[1]);
+      reader.readAsDataURL(audioBlob);
+    });
 
     status.innerText = "မြန်မာ Recap Script နှင့် Voiceover ဖန်တီးနေပါသည်...";
     const res = await fetch("/.netlify/functions/generate-recap", {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ audioBase64 }),
     });
+
     const result = await res.json();
-    
+    if (!res.ok || result.error) throw new Error(result.error || `Server Error: ${res.status}`);
+
     scriptBox.innerText = result.script;
     scriptBox.classList.remove("hidden");
 
-    status.innerText = "ဗီဒီယိုနှင့် မြန်မာအသံ ပေါင်းစပ်နေပါသည်...";
-    const voiceoverBuffer = Uint8Array.from(atob(result.voiceoverBase64), c => c.charCodeAt(0));
+    status.innerText = "ဗီဒီယိုနှင့် မြန်မာအသံ ပေါင်းစပ်နေပါသည် (Rendering)...";
+    const voiceoverBuffer = Uint8Array.from(atob(result.voiceoverBase64), (c) => c.charCodeAt(0));
     await ffmpeg.writeFile("voice.mp3", voiceoverBuffer);
 
     await ffmpeg.exec([
@@ -49,12 +64,17 @@ processBtn.addEventListener("click", async () => {
       "-map", "[aout]",
       "-c:v", "copy",
       "-c:a", "aac",
-      "final_recap.mp4"
+      "final_recap.mp4",
     ]);
 
     const finalData = await ffmpeg.readFile("final_recap.mp4");
     outputVideo.src = URL.createObjectURL(new Blob([finalData.buffer], { type: "video/mp4" }));
     outputVideo.classList.remove("hidden");
-    status.innerText = "ဗီဒီယို အောင်မြင်စွာ ထွက်ရှိပါပြီ!";
-  };
+    status.innerText = "🎉 Recap ဗီဒီယို အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!";
+  } catch (err) {
+    console.error(err);
+    status.innerText = "⚠️ အမှားဖြစ်သွားပါသည်: " + err.message;
+  } finally {
+    processBtn.disabled = false;
+  }
 });
