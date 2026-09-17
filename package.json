@@ -1,0 +1,9 @@
+{
+  "name": "burmese-movie-recap",
+  "version": "1.0.0",
+  "dependencies": {
+    "groq-sdk": "^0.3.0",
+    "@google/genai": "^0.1.1",
+    "edge-tts-node": "^1.0.3"
+  }
+}
