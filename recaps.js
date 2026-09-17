@@ -65,81 +65,108 @@ function initRecapsView() {
   `;
 }
 
-// Progress Bar နှင့် အဆင့် Update ပေးမည့် Helper
+// Progress Bar အဆင့်မြှင့်တင်ခြင်း Helper
 function updateRecapProgress(percent, title, activeModel = null) {
   const pContainer = document.getElementById("recap-progress-container");
   const pBar = document.getElementById("recap-progress-bar");
   const pTitle = document.getElementById("recap-step-title");
   const pPercent = document.getElementById("recap-step-percent");
 
-  pContainer.style.display = "block";
-  pBar.style.width = `${percent}%`;
-  pPercent.innerText = `${percent}%`;
-  pTitle.innerText = title;
+  if (pContainer) pContainer.style.display = "block";
+  if (pBar) pBar.style.width = `${percent}%`;
+  if (pPercent) pPercent.innerText = `${percent}%`;
+  if (pTitle) pTitle.innerText = title;
 
-  if (activeModel === "stt") {
-    document.getElementById("model-badge-stt").style.color = "#38bdf8";
-  } else if (activeModel === "llm") {
-    document.getElementById("model-badge-stt").style.color = "#10b981";
-    document.getElementById("model-badge-llm").style.color = "#38bdf8";
-  } else if (activeModel === "tts") {
-    document.getElementById("model-badge-llm").style.color = "#10b981";
-    document.getElementById("model-badge-tts").style.color = "#38bdf8";
+  const badgeSTT = document.getElementById("model-badge-stt");
+  const badgeLLM = document.getElementById("model-badge-llm");
+  const badgeTTS = document.getElementById("model-badge-tts");
+
+  if (activeModel === "stt" && badgeSTT) {
+    badgeSTT.style.color = "#38bdf8";
+  } else if (activeModel === "llm" && badgeLLM) {
+    if (badgeSTT) badgeSTT.style.color = "#10b981";
+    badgeLLM.style.color = "#38bdf8";
+  } else if (activeModel === "tts" && badgeTTS) {
+    if (badgeLLM) badgeLLM.style.color = "#10b981";
+    badgeTTS.style.color = "#38bdf8";
   } else if (activeModel === "done") {
-    document.getElementById("model-badge-tts").style.color = "#10b981";
+    if (badgeTTS) badgeTTS.style.color = "#10b981";
   }
 }
 
-// ဗီဒီယိုထဲမှ အသံကို သီးသန့်ထုတ်ယူပြီး အရွယ်အစားချုံ့ခြင်း (Audio Extraction with Progress)
+// အသံကို ပေါ့ပါးသော Compressed Format (WebM/Opus) အဖြစ် ချုံ့ယူခြင်း
 async function extractAudioFromVideo(file) {
-  updateRecapProgress(10, "ဗီဒီယိုဒေတာ ဖတ်ယူနေပါသည်...");
-  const arrayBuffer = await file.arrayBuffer();
+  updateRecapProgress(15, "ဗီဒီယိုဒေတာ ချုံ့ယူရန် ပြင်ဆင်နေပါသည်...");
 
-  updateRecapProgress(25, "အသံလှိုင်းများ ခွဲထုတ်ချုံ့နေပါသည်...");
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    video.preload = "metadata";
+    video.src = URL.createObjectURL(file);
 
-  updateRecapProgress(40, "ပေါ့ပါးသော WAV အသံအဖြစ် ပြောင်းလဲနေပါသည်...");
-  const numOfChan = 1; // Mono
-  const length = audioBuffer.length * numOfChan * 2 + 44;
-  const outBuffer = new ArrayBuffer(length);
-  const view = new DataView(outBuffer);
-  let sampleRate = audioBuffer.sampleRate;
-  let offset = 0;
-  let pos = 0;
+    video.onloadedmetadata = async () => {
+      try {
+        updateRecapProgress(30, "အသံဖိုင်ကို အရွယ်အစား အလွန်သေးငယ်အောင် ချုံ့နေပါသည်...");
 
-  function setUint16(data) { view.setUint16(pos, data, true); pos += 2; }
-  function setUint32(data) { view.setUint32(pos, data, true); pos += 4; }
+        // Browser Audio Graph ချိတ်ဆက်ခြင်း
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const source = audioCtx.createMediaElementSource(video);
+        const destination = audioCtx.createMediaStreamDestination();
+        source.connect(destination);
 
-  setUint32(0x46464952); // "RIFF"
-  setUint32(length - 8);
-  setUint32(0x45564157); // "WAVE"
-  setUint32(0x20746d66); // "fmt "
-  setUint32(16);
-  setUint16(1); // PCM
-  setUint16(numOfChan);
-  setUint32(sampleRate);
-  setUint32(sampleRate * 2 * numOfChan);
-  setUint16(numOfChan * 2);
-  setUint16(16);
-  setUint32(0x61746164); // "data"
-  setUint32(length - pos - 4);
+        const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+          ? "audio/webm;codecs=opus"
+          : "audio/webm";
 
-  const channelData = audioBuffer.getChannelData(0);
-  while (pos < length) {
-    let sample = Math.max(-1, Math.min(1, channelData[offset]));
-    sample = (0.5 + sample < 0 ? sample * 32768 : sample * 32767) | 0;
-    view.setInt16(pos, sample, true);
-    pos += 2;
-    offset++;
-  }
+        const recorder = new MediaRecorder(destination.stream, {
+          mimeType: mimeType,
+          audioBitsPerSecond: 32000 // 32kbps ဖြင့် အသံအရွယ်အစားကို 1MB အောက်သို့ အလွန်ချုံ့ခြင်း
+        });
 
-  let binary = '';
-  const bytes = new Uint8Array(outBuffer);
-  for (let i = 0; i < bytes.byteLength; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
+        const chunks = [];
+        recorder.ondataavailable = (e) => {
+          if (e.data.size > 0) chunks.push(e.data);
+        };
+
+        recorder.onstop = async () => {
+          const audioBlob = new Blob(chunks, { type: "audio/webm" });
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const base64Audio = reader.result.split(",")[1];
+            resolve(base64Audio);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(audioBlob);
+        };
+
+        recorder.start();
+        video.currentTime = 0;
+        await video.play();
+
+        video.onended = () => {
+          recorder.stop();
+          audioCtx.close();
+        };
+
+        // ဗီဒီယိုသည် ရှည်လျားပါက Recap အတွက် အစပိုင်း စက္ကန့် ၆၀ သာ အများဆုံး ဖြတ်ယူခြင်း
+        setTimeout(() => {
+          if (recorder.state === "recording") {
+            recorder.stop();
+            video.pause();
+            audioCtx.close();
+          }
+        }, 60000);
+
+      } catch (err) {
+        // MediaRecorder Fallback (ရိုးရိုး Slice သုံးပြီး ချုံ့ခြင်း)
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file.slice(0, 3 * 1024 * 1024)); // 3MB သာ အများဆုံး ပေးပို့ခြင်း
+      }
+    };
+
+    video.onerror = (e) => reject(new Error("ဗီဒီယိုဖိုင် ဖတ်ယူ၍ မရပါ"));
+  });
 }
 
 async function handleGenerateRecap() {
@@ -165,21 +192,21 @@ async function handleGenerateRecap() {
   generateBtn.style.opacity = "0.5";
 
   try {
-    // အဆင့် ၁ - အသံခွဲထုတ်ခြင်း
+    // အဆင့် ၁ - ပေါ့ပါးသော အသံဖိုင် ချုံ့ထုတ်ခြင်း
     const compressedAudioBase64 = await extractAudioFromVideo(file);
 
-    // အဆင့် ၂ - Groq Whisper STT အသံဖတ်ခြင်း
-    updateRecapProgress(55, "အသံမှ စကားပြောများကို စာသားပြောင်းနေပါသည်...", "stt");
+    // အဆင့် ၂ - Groq Whisper STT
+    updateRecapProgress(55, "Groq Whisper ဖြင့် အသံမှ စကားပြောများကို ဖတ်ယူနေပါသည်...", "stt");
 
     // အဆင့် ၃ - Gemini Script ရေးသားခြင်း
     setTimeout(() => {
-      updateRecapProgress(75, "AI Recap Script ရေးသားနေပါသည်...", "llm");
-    }, 2500);
+      updateRecapProgress(75, "Gemini 3.6-flash ဖြင့် Recap Script ရေးသားနေပါသည်...", "llm");
+    }, 2000);
 
-    // အဆင့် ၄ - Hugging Face ZeroGPU Edge-TTS
+    // အဆင့် ၄ - Hugging Face Edge-TTS
     setTimeout(() => {
-      updateRecapProgress(88, "မြန်မာ Neural အသံဖိုင် ဖန်တီးနေပါသည်...", "tts");
-    }, 5500);
+      updateRecapProgress(88, "HF ZeroGPU (Edge-TTS) ဖြင့် မြန်မာအသံ ထုတ်ယူနေပါသည်...", "tts");
+    }, 4500);
 
     const response = await fetch("/api/generate-recap", {
       method: "POST",
