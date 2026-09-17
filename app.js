@@ -8,13 +8,12 @@ const status = document.getElementById("status");
 const scriptBox = document.getElementById("scriptBox");
 const outputVideo = document.getElementById("outputVideo");
 
-// ၁။ ဒေါင်းလုဒ် ရာခိုင်နှုန်း (%) နှင့် အရွယ်အစား (MB) ကို တိကျစွာ တိုင်းတာပြသမည့် Function
+// ၁။ ဒေါင်းလုဒ် ရာခိုင်နှုန်း (%) ပြသပေးသည့် Function
 async function fetchWithProgress(url, mimeType, label) {
   const response = await fetch(url);
-  if (!response.ok) throw new Error(`Download မအောင်မြင်ပါ: ${response.status} ${response.statusText}`);
+  if (!response.ok) throw new Error(`Download မအောင်မြင်ပါ: ${response.status}`);
 
   const contentLength = response.headers.get("content-length");
-  // Content-Length မပါပါက ခန့်မှန်းခြေ 31MB ထားရှိခြင်း
   const total = contentLength ? parseInt(contentLength, 10) : 31457280;
   let loaded = 0;
 
@@ -30,7 +29,6 @@ async function fetchWithProgress(url, mimeType, label) {
     const percent = Math.min(100, Math.round((loaded / total) * 100));
     const loadedMB = (loaded / (1024 * 1024)).toFixed(1);
     const totalMB = (total / (1024 * 1024)).toFixed(1);
-
     status.innerText = `📥 ${label}: ${percent}% (${loadedMB}MB / ${totalMB}MB)...`;
   }
 
@@ -45,35 +43,53 @@ processBtn.addEventListener("click", async () => {
   try {
     processBtn.disabled = true;
 
-    // ၂။ FFmpeg Core ကို Progress % ဖြင့် တိုက်ရိုက်ဒေါင်းလုဒ်ဆွဲခြင်း
     if (!ffmpeg.loaded) {
       const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
-      const ffmpegURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm";
+      const ffmpegWorkerSrc = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm/worker.js";
 
-      status.innerText = "FFmpeg Worker ကို စတင်ဆွဲယူနေပါသည်...";
-      const classWorkerURL = await toBlobURL(`${ffmpegURL}/worker.js`, "text/javascript");
+      // Worker ပြင်ဆင်ခြင်း
+      status.innerText = "FFmpeg Worker စနစ်ကို ပြင်ဆင်နေပါသည်...";
+      const workerBlob = new Blob([`import "${ffmpegWorkerSrc}";`], { type: "text/javascript" });
+      const classWorkerURL = URL.createObjectURL(workerBlob);
+
       const coreURL = await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript");
-
-      // wasm ဖိုင် (~31MB) ကို progress % ပြသပြီး ဒေါင်းလုဒ်ဆွဲခြင်း
       const wasmURL = await fetchWithProgress(
         `${baseURL}/ffmpeg-core.wasm`,
         "application/wasm",
         "FFmpeg Core ဖိုင်အား ဒေါင်းလုဒ်ဆွဲနေပါသည်"
       );
 
-      status.innerText = "FFmpeg Core ကို စတင် Run နေပါသည်...";
-      await ffmpeg.load({ coreURL, wasmURL, classWorkerURL });
+      // ၂။ Core Run သည့်အခါ % တက်ပြပေးသည့် စနစ် (Simulated Progress)
+      let runPercent = 10;
+      status.innerText = `⚙️ FFmpeg Core စတင် Run နေပါသည်: ${runPercent}%...`;
 
-      // ဗီဒီယို Render ပြုလုပ်သည့်အခါ % ပြသပေးရန် ချိန်ညှိခြင်း
+      const runInterval = setInterval(() => {
+        if (runPercent < 90) {
+          runPercent += Math.floor(Math.random() * 12) + 8;
+          if (runPercent > 90) runPercent = 90;
+          status.innerText = `⚙️ FFmpeg Core စတင် Run နေပါသည်: ${runPercent}%...`;
+        }
+      }, 500);
+
+      try {
+        await ffmpeg.load({ coreURL, wasmURL, classWorkerURL });
+        clearInterval(runInterval);
+        status.innerText = `⚙️ FFmpeg Core စတင် Run ခြင်း ပြီးစီးပါပြီ: 100%!`;
+      } catch (loadErr) {
+        clearInterval(runInterval);
+        throw new Error("FFmpeg Core Run ခြင်း မအောင်မြင်ပါ: " + loadErr.message);
+      }
+
+      // Render % ပြသပေးရန် ချိန်ညှိခြင်း
       ffmpeg.on("progress", ({ progress }) => {
         const renderPercent = Math.round(progress * 100);
         if (renderPercent > 0 && renderPercent <= 100) {
-          status.innerText = `⚙️ ဗီဒီယိုနှင့် အသံ ပေါင်းစပ်နေပါသည် (Rendering: ${renderPercent}%)...`;
+          status.innerText = `⚙️ ဗီဒီယိုနှင့် အသံ ပေါင်းစပ်နေပါသည်: ${renderPercent}%...`;
         }
       });
     }
 
-    // ၃။ ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်ခြင်း
+    // ၃။ ဗီဒီယိုမှ အသံဖိုင် ခွဲထုတ်ခြင်း
     status.innerText = "ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်နေပါသည်...";
     await ffmpeg.writeFile("input.mp4", await fetchFile(file));
     await ffmpeg.exec(["-i", "input.mp4", "-vn", "-ar", "16000", "-ac", "1", "-b:a", "32k", "audio.mp3"]);
@@ -81,7 +97,7 @@ processBtn.addEventListener("click", async () => {
     const audioData = await ffmpeg.readFile("audio.mp3");
     const audioBlob = new Blob([audioData.buffer], { type: "audio/mp3" });
 
-    // ၄။ AI ဆီသို့ Base64 ဖြင့် အသံဖိုင် ပေးပို့ခြင်း
+    // ၄။ AI ထံ အသံ ပေးပို့ခြင်း
     status.innerText = "AI ဆီသို့ အသံဖိုင် ပေးပို့နေပါသည်...";
     const audioBase64 = await new Promise((resolve) => {
       const reader = new FileReader();
@@ -89,7 +105,7 @@ processBtn.addEventListener("click", async () => {
       reader.readAsDataURL(audioBlob);
     });
 
-    // ၅။ Vercel Backend Function (/api/generate-recap) သို့ ပို့၍ မြန်မာစာသားနှင့် အသံ ရယူခြင်း
+    // ၅။ Vercel Backend ဆီမှ မြန်မာ Script နှင့် Voiceover ရယူခြင်း
     status.innerText = "မြန်မာ Recap Script နှင့် Voiceover ဖန်တီးနေပါသည်...";
     const res = await fetch("/api/generate-recap", {
       method: "POST",
@@ -103,7 +119,7 @@ processBtn.addEventListener("click", async () => {
     scriptBox.innerText = result.script;
     scriptBox.classList.remove("hidden");
 
-    // ၆။ ရရှိလာသော မြန်မာအသံနှင့် ဗီဒီယိုကို ပေါင်းစပ်ခြင်း
+    // ၆။ အသံနှင့် ဗီဒီယို ပြန်လည်ပေါင်းစပ်ခြင်း
     status.innerText = "ဗီဒီယိုနှင့် မြန်မာအသံ ပေါင်းစပ်နေပါသည် (ခဏစောင့်ပေးပါ)...";
     const voiceoverBuffer = Uint8Array.from(atob(result.voiceoverBase64), (c) => c.charCodeAt(0));
     await ffmpeg.writeFile("voice.mp3", voiceoverBuffer);
