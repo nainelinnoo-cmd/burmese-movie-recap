@@ -1,138 +1,103 @@
 <!DOCTYPE html>
 <html lang="my">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Burmese Movie Recap Studio</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>AI Media Studio</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" />
   <style>
-    * {
-      box-sizing: border-box;
-      margin: 0;
-      padding: 0;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    }
     body {
-      background-color: #0d1117;
-      color: #f0f6fc;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 24px 16px;
+      background-color: #0b0f19;
+      color: #f3f4f6;
+      font-family: system-ui, -apple-system, sans-serif;
     }
-    .container {
-      width: 100%;
-      max-width: 480px;
-      display: flex;
-      flex-direction: column;
-      gap: 18px;
+    .active-tab {
+      color: #38bdf8;
     }
-    .title-box {
-      text-align: center;
-      margin-bottom: 8px;
+    .active-tab i {
+      transform: translateY(-2px);
+      transition: transform 0.2s ease;
     }
-    .title-box h1 {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #ffffff;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
+    .tab-content {
+      display: none;
     }
-    .card {
-      background-color: #161b22;
-      border: 1px solid #30363d;
-      border-radius: 12px;
-      padding: 16px;
-      display: flex;
-      flex-direction: column;
-      gap: 14px;
-    }
-    input[type="file"] {
-      width: 100%;
-      padding: 10px;
-      background-color: #0d1117;
-      border: 1px dashed #30363d;
-      border-radius: 8px;
-      color: #8b949e;
-      font-size: 0.9rem;
-    }
-    input[type="file"]::-webkit-file-upload-button {
-      background-color: #21262d;
-      color: #c9d1d9;
-      border: 1px solid #30363d;
-      padding: 6px 12px;
-      border-radius: 6px;
-      cursor: pointer;
-      margin-right: 10px;
-    }
-    #processBtn {
-      background-color: #238636;
-      color: #ffffff;
-      font-size: 1rem;
-      font-weight: 600;
-      border: none;
-      border-radius: 8px;
-      padding: 14px;
-      cursor: pointer;
-      transition: background-color 0.2s;
-    }
-    #processBtn:hover {
-      background-color: #2ea043;
-    }
-    #processBtn:disabled {
-      background-color: #343942;
-      color: #8b949e;
-      cursor: not-allowed;
-    }
-    #status {
-      font-size: 0.92rem;
-      color: #e3b341;
-      line-height: 1.5;
-      text-align: center;
-      min-height: 24px;
-      word-break: break-word;
-    }
-    #scriptBox {
-      background-color: #0d1117;
-      border: 1px solid #30363d;
-      border-radius: 8px;
-      padding: 14px;
-      font-size: 0.92rem;
-      line-height: 1.6;
-      color: #c9d1d9;
-      white-space: pre-wrap;
-    }
-    video {
-      width: 100%;
-      border-radius: 8px;
-      background-color: #000;
-      border: 1px solid #30363d;
-    }
-    .hidden {
-      display: none !important;
+    .tab-content.active {
+      display: block;
     }
   </style>
 </head>
-<body>
+<body class="pb-20">
 
-  <div class="container">
-    <div class="title-box">
-      <h1>🎬 Burmese Movie Recap Studio</h1>
+  <!-- Header -->
+  <header class="p-4 border-b border-gray-800 bg-gray-900/80 sticky top-0 backdrop-blur z-20">
+    <h1 id="page-title" class="text-lg font-bold text-center text-sky-400">Recaps Studio</h1>
+  </header>
+
+  <!-- Pages Content Area -->
+  <main class="max-w-md mx-auto p-4">
+    <!-- Tab 1: Recaps Studio -->
+    <section id="view-recaps" class="tab-content active"></section>
+
+    <!-- Tab 2: Motion Video -->
+    <section id="view-motion" class="tab-content"></section>
+
+    <!-- Tab 3: Story Creator -->
+    <section id="view-story" class="tab-content"></section>
+  </main>
+
+  <!-- Bottom Navigation Bar -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-gray-900/95 border-t border-gray-800 backdrop-blur z-30">
+    <div class="max-w-md mx-auto flex justify-around items-center h-16">
+      
+      <button onclick="switchTab('recaps')" id="tab-btn-recaps" class="flex flex-col items-center justify-center w-full h-full text-xs text-gray-400 active-tab">
+        <i class="fa-solid fa-clapperboard text-lg mb-1"></i>
+        <span>Recaps</span>
+      </button>
+
+      <button onclick="switchTab('motion')" id="tab-btn-motion" class="flex flex-col items-center justify-center w-full h-full text-xs text-gray-400">
+        <i class="fa-solid fa-wand-magic-sparkles text-lg mb-1"></i>
+        <span>Motion</span>
+      </button>
+
+      <button onclick="switchTab('story')" id="tab-btn-story" class="flex flex-col items-center justify-center w-full h-full text-xs text-gray-400">
+        <i class="fa-solid fa-book-open text-lg mb-1"></i>
+        <span>Story</span>
+      </button>
+
     </div>
+  </nav>
 
-    <div class="card">
-      <input type="file" id="videoInput" accept="video/mp4,video/*">
-      <button id="processBtn">Recap ဗီဒီယို ဖန်တီးမည်</button>
-      <div id="status"></div>
-    </div>
+  <!-- JS Modules ခေါ်ယူခြင်း -->
+  <script src="recaps.js"></script>
+  <script src="motion.js"></script>
+  <script src="story.js"></script>
 
-    <div id="scriptBox" class="hidden"></div>
-    <video id="outputVideo" controls class="hidden"></video>
-  </div>
+  <script>
+    function switchTab(tabId) {
+      // Content ဖျောက်/ပြ လုပ်ခြင်း
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+      document.getElementById(`view-${tabId}`).classList.add('active');
 
-  <!-- Cache လုံးဝ မငြိစေရန် ?v=3 အမှတ်အသား ထည့်သွင်းထားပါသည် -->
-  <script type="module" src="./app.js?v=3"></script>
+      // Nav icon အရောင်ပြောင်းခြင်း
+      document.querySelectorAll('nav button').forEach(el => el.classList.remove('active-tab'));
+      document.getElementById(`tab-btn-${tabId}`).classList.add('active-tab');
+
+      // Title ပြောင်းခြင်း
+      const titles = {
+        recaps: 'Recaps Studio',
+        motion: 'Motion Video',
+        story: 'Story Creator'
+      };
+      document.getElementById('page-title').innerText = titles[tabId];
+    }
+
+    // App စဖွင့်ချိန်တွင် Views များ Render ပြုလုပ်ခြင်း
+    window.addEventListener('DOMContentLoaded', () => {
+      initRecapsView();
+      initMotionView();
+      initStoryView();
+    });
+  </script>
 </body>
 </html>
