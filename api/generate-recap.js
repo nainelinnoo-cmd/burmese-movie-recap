@@ -1,13 +1,15 @@
 const { Groq, toFile } = require("groq-sdk");
 const { GoogleGenAI } = require("@google/genai");
-const { MsEdgeTTS, OUTPUT_FORMAT } = require("edge-tts-node");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-// ၁။ မြန်မာ Recap Script ရေးသားမည့် Function (Gemini 3.6-flash + Groq Fallback)
+// Hugging Face Space URL
+const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
+
+// ၁။ AI Recap Script ရေးသားခြင်း (Gemini 3.6-flash + Groq Llama Fallback)
 async function generateBurmeseRecap(transcript) {
-  const prompt = `Based on this movie dialogue transcript: "${transcript}", write an engaging, concise movie recap narration in natural Burmese language. Keep it under 80 words. Return ONLY the Burmese narration text without English explanations.`;
+  const prompt = `Based on this movie dialogue transcript: "${transcript}", write an engaging, concise movie recap narration in natural Burmese language. Keep it under 100 words. Return ONLY the Burmese narration text without English explanations.`;
 
   const geminiModels = [
     "gemini-3.6-flash",
@@ -25,12 +27,12 @@ async function generateBurmeseRecap(transcript) {
         });
         if (response && response.text) return response.text.trim();
       } catch (err) {
-        console.warn(`Gemini (${modelName}) failed: ${err.message}`);
+        console.warn(`Gemini (${modelName}) failed:`, err.message);
       }
     }
   }
 
-  // Gemini မရပါက Groq Llama-3.3 သို့ ကူးပြောင်းခြင်း
+  // Gemini အဆင်မပြေပါက Groq Llama-3.3 သို့ ကူးပြောင်းခြင်း
   const groqCompletion = await groq.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [
@@ -38,7 +40,7 @@ async function generateBurmeseRecap(transcript) {
       { role: "user", content: prompt },
     ],
     temperature: 0.7,
-    max_tokens: 300,
+    max_tokens: 400,
   });
 
   const resultText = groqCompletion.choices[0]?.message?.content;
@@ -47,62 +49,42 @@ async function generateBurmeseRecap(transcript) {
   throw new Error("AI Script ရေးသားမည့် Model အားလုံး မအောင်မြင်ပါ");
 }
 
-// ၂။ Vercel IP Block လုံးဝ မခံရသော Google Cloud မြန်မာ TTS Fallback Function
-async function getGoogleTTSBuffer(text) {
-  // စာသားများကို အပိုင်းလိုက် ခွဲထုတ်ခြင်း
-  const parts = text.match(/[^၊။!?,.\n]+[၊။!?,.\n]?/g) || [text];
-  const audioChunks = [];
+// ၂။ Hugging Face Gradio စနစ်မှ မြန်မာ Neural အသံ ဆွဲယူခြင်း
+async function fetchBurmeseVoice(text) {
+  console.log("Hugging Face Space သို့ မြန်မာအသံ တောင်းဆိုနေပါသည်...");
 
-  for (const part of parts) {
-    const cleanText = part.trim();
-    if (!cleanText) continue;
+  // Gradio SSE API စတင်ခေါ်ယူခြင်း
+  const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [text] }),
+  });
 
-    const encoded = encodeURIComponent(cleanText);
-    const url = `https://translate.google.com/translate_tts?ie=UTF-8&tl=my&client=tw-ob&q=${encoded}`;
-    
-    const response = await fetch(url, {
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-      },
-    });
+  if (!postRes.ok) {
+    const err = await postRes.text();
+    throw new Error(`Hugging Face Call Error: ${postRes.status} - ${err}`);
+  }
 
-    if (response.ok) {
-      const arrayBuffer = await response.arrayBuffer();
-      audioChunks.push(Buffer.from(arrayBuffer));
+  const { event_id } = await postRes.json();
+
+  // ထွက်လာသော Event Result ကို လှမ်းယူခြင်း
+  const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
+  const streamText = await streamRes.text();
+
+  const lines = streamText.split("\n");
+  for (const line of lines) {
+    if (line.startsWith("data:")) {
+      const parsed = JSON.parse(line.replace("data:", "").trim());
+      if (Array.isArray(parsed) && parsed[0]) {
+        return parsed[0]; // Base64 Audio String
+      }
     }
   }
 
-  if (audioChunks.length === 0) {
-    throw new Error("Google TTS အသံထုတ်ယူ၍ မရရှိပါ");
-  }
-
-  return Buffer.concat(audioChunks);
+  throw new Error("Hugging Face မှ အသံဖိုင်ဒေတာ ပြန်မရရှိပါ");
 }
 
-// ၃။ Edge-TTS စမ်းသပ်ပြီး ပျက်ကျပါက Google TTS သို့ Auto ပြောင်းမည့် Function
-async function generateBurmeseVoice(burmeseText) {
-  try {
-    console.log("Edge-TTS ဖြင့် အသံဖိုင် ဖန်တီးနေပါသည်...");
-    const tts = new MsEdgeTTS({});
-    const format = OUTPUT_FORMAT ? OUTPUT_FORMAT.AUDIO_24KHZ_48KBITRATE_MONO_MP3 : "audio-24khz-48kbitrate-mono-mp3";
-    await tts.setMetadata("my-MM-ThihaNeural", format);
-
-    const streamResult = tts.toStream(burmeseText, {});
-    const stream = streamResult?.audioStream || streamResult;
-
-    const chunks = [];
-    for await (const chunk of stream) {
-      chunks.push(chunk);
-    }
-    return Buffer.concat(chunks);
-  } catch (edgeErr) {
-    console.warn("Microsoft Edge-TTS Cloud IP Block ဖြစ်သွားပါသည်၊ Google TTS သို့ အလိုအလျောက် ပြောင်းသုံးနေပါသည်...");
-    // Microsoft Server ချိတ်မရပါက Google TTS ဖြင့် အစားထိုး အသံထုတ်ယူခြင်း
-    return await getGoogleTTSBuffer(burmeseText);
-  }
-}
-
-// ၄။ Vercel Serverless Function အဓိက လုပ်ငန်းစဉ်
+// ၃။ Vercel Serverless Function အဓိက လုပ်ငန်းစဉ်
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method Not Allowed" });
@@ -123,21 +105,21 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // အဆင့် ၂ - Gemini 3.6-flash / Groq Llama (မြန်မာ Recap ရေးသားခြင်း)
+    // အဆင့် ၂ - Gemini / Groq ဖြင့် မြန်မာ Recap Script ရေးသားခြင်း
     const burmeseScript = await generateBurmeseRecap(transcription.text);
 
-    // အဆင့် ၃ - Dual-TTS Fallback ဖြင့် မြန်မာအသံ ထုတ်ယူခြင်း
-    const voiceoverBuffer = await generateBurmeseVoice(burmeseScript);
+    // အဆင့် ၃ - Hugging Face မှ မြန်မာ Neural အသံ ရယူခြင်း
+    const voiceoverBase64 = await fetchBurmeseVoice(burmeseScript);
 
-    // အဆင့် ၄ - Frontend သို့ စာသားနှင့် အသံ Base64 ပြန်ပို့ခြင်း
+    // အဆင့် ၄ - Frontend သို့ စာသားနှင့် အသံ Base64 ပေးပို့ခြင်း
     return res.status(200).json({
       script: burmeseScript,
-      voiceoverBase64: voiceoverBuffer.toString("base64"),
+      voiceoverBase64: voiceoverBase64,
     });
   } catch (error) {
     console.error("Backend Error:", error);
     return res.status(500).json({
-      error: error.message || error.toString() || "Server Process ပျက်ကျသွားပါသည်",
+      error: error.message || "Server လုပ်ငန်းစဉ် မအောင်မြင်ပါ",
     });
   }
 };
