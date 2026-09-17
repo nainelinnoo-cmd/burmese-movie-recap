@@ -15,16 +15,20 @@ processBtn.addEventListener("click", async () => {
   try {
     processBtn.disabled = true;
 
-    // FFmpeg Core ကို Blob URL ဖြင့် တိုက်ရိုက်ဆွဲတင်ခြင်း
+    // FFmpeg Core နှင့် Worker ကို Blob URL ဖြင့် Same-Origin အဖြစ် သတ်မှတ်တင်ယူခြင်း
     if (!ffmpeg.loaded) {
       status.innerText = "FFmpeg Core ကို စတင်ဒေါင်းလုဒ်ဆွဲနေပါသည် (ခဏစောင့်ပေးပါ)...";
       const baseURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/core@0.12.10/dist/esm";
+      const ffmpegURL = "https://cdn.jsdelivr.net/npm/@ffmpeg/ffmpeg@0.12.10/dist/esm";
+
       await ffmpeg.load({
         coreURL: await toBlobURL(`${baseURL}/ffmpeg-core.js`, "text/javascript"),
         wasmURL: await toBlobURL(`${baseURL}/ffmpeg-core.wasm`, "application/wasm"),
+        classWorkerURL: await toBlobURL(`${ffmpegURL}/worker.js`, "text/javascript"),
       });
     }
 
+    // ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်ခြင်း
     status.innerText = "ဗီဒီယိုမှ အသံဖိုင် သီးသန့် ခွဲထုတ်နေပါသည်...";
     await ffmpeg.writeFile("input.mp4", await fetchFile(file));
     await ffmpeg.exec(["-i", "input.mp4", "-vn", "-ar", "16000", "-ac", "1", "-b:a", "32k", "audio.mp3"]);
@@ -32,6 +36,7 @@ processBtn.addEventListener("click", async () => {
     const audioData = await ffmpeg.readFile("audio.mp3");
     const audioBlob = new Blob([audioData.buffer], { type: "audio/mp3" });
 
+    // AI ဆီသို့ Base64 ဖြင့် အသံဖိုင် ပို့ဆောင်ခြင်း
     status.innerText = "AI ဆီသို့ အသံဖိုင် ပေးပို့နေပါသည်...";
     const audioBase64 = await new Promise((resolve) => {
       const reader = new FileReader();
@@ -39,6 +44,7 @@ processBtn.addEventListener("click", async () => {
       reader.readAsDataURL(audioBlob);
     });
 
+    // Netlify Functions မှတဆင့် Recap Script နှင့် Voiceover ထုတ်ယူခြင်း
     status.innerText = "မြန်မာ Recap Script နှင့် Voiceover ဖန်တီးနေပါသည်...";
     const res = await fetch("/.netlify/functions/generate-recap", {
       method: "POST",
@@ -52,7 +58,8 @@ processBtn.addEventListener("click", async () => {
     scriptBox.innerText = result.script;
     scriptBox.classList.remove("hidden");
 
-    status.innerText = "ဗီဒီယိုနှင့် မြန်မာအသံ ပေါင်းစပ်နေပါသည် (Rendering)...";
+    // ဗီဒီယိုနှင့် အသံသစ် ပေါင်းစပ်ခြင်း
+    status.innerText = "ဗီဒီယိုနှင့် မြန်မာအသံ ပေါင်းစပ်နေပါသည် (ခဏစောင့်ပေးပါ)...";
     const voiceoverBuffer = Uint8Array.from(atob(result.voiceoverBase64), (c) => c.charCodeAt(0));
     await ffmpeg.writeFile("voice.mp3", voiceoverBuffer);
 
