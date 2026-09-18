@@ -105,7 +105,7 @@ function initRecapsView() {
         </div>
       </div>
 
-      <!-- Error Display -->
+      <!-- Error Box -->
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
 
       <!-- Result Studio Content -->
@@ -190,32 +190,40 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- စာသားအရောင် ၇ မျိုး -->
+          <!-- စာသားအရောင် ၇ မျိုး (O စက်ဝိုင်း Icon များ) -->
           <div>
-            <label style="font-size: 0.75rem; margin-bottom: 6px;">စာသားအရောင် (၇ မျိုး ရွေးချယ်နိုင်သည်)</label>
-            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
-              <div onclick="selectFontColor('#ffffff', this)" class="color-dot" style="background: #ffffff; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
-              <div onclick="selectFontColor('#facc15', this)" class="color-dot" style="background: #facc15; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <div onclick="selectFontColor('#38bdf8', this)" class="color-dot" style="background: #38bdf8; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <div onclick="selectFontColor('#4ade80', this)" class="color-dot" style="background: #4ade80; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <div onclick="selectFontColor('#f87171', this)" class="color-dot" style="background: #f87171; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <div onclick="selectFontColor('#c084fc', this)" class="color-dot" style="background: #c084fc; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <div onclick="selectFontColor('#fb923c', this)" class="color-dot" style="background: #fb923c; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+            <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">စာသားအရောင် (၇ မျိုး)</label>
+            <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
+              <div onclick="selectFontColor('#ffffff', this)" class="font-color-dot" style="background: #ffffff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
+              <div onclick="selectFontColor('#facc15', this)" class="font-color-dot" style="background: #facc15; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#38bdf8', this)" class="font-color-dot" style="background: #38bdf8; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#4ade80', this)" class="font-color-dot" style="background: #4ade80; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#f87171', this)" class="font-color-dot" style="background: #f87171; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#c084fc', this)" class="font-color-dot" style="background: #c084fc; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#fb923c', this)" class="font-color-dot" style="background: #fb923c; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
             </div>
           </div>
 
-          <!-- နောက်ခံ/အနားကွပ် ၈ မျိုး -->
+          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (စာသားမပါဘဲ O စက်ဝိုင်း Icon များဖြင့်သာ ပြသခြင်း) -->
           <div>
-            <label style="font-size: 0.75rem; margin-bottom: 6px;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
-              <button onclick="selectBgStyle('rgba(0,0,0,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #000; border: 1px solid #475569;">မည်းကြည်</button>
-              <button onclick="selectBgStyle('#000000')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #111; border: 1px solid #475569;">အနက်</button>
-              <button onclick="selectBgStyle('rgba(185,28,28,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #991b1b;">နီကြည်</button>
-              <button onclick="selectBgStyle('rgba(30,58,138,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #1e3a8a;">ပြာကြည်</button>
-              <button onclick="selectBgStyle('rgba(20,83,45,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #14532d;">စိမ်းကြည်</button>
-              <button onclick="selectBgStyle('rgba(180,83,9,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #b45309;">ဝါကြည်</button>
-              <button onclick="selectBgStyle('rgba(109,40,217,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #6d28d9;">ခရမ်းကြည်</button>
-              <button onclick="selectBgStyle('stroke')" class="btn" style="padding: 6px 4px; font-size: 0.68rem; background: #0284c7; color: #fff; font-weight: bold;">အနားကွပ်</button>
+            <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
+            <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
+              <!-- ၁။ မည်းကြည် -->
+              <div onclick="selectBgStyle('rgba(0,0,0,0.75)', this)" class="bg-style-dot" title="မည်းကြည်" style="background: rgba(0,0,0,0.75); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
+              <!-- ၂။ အနက် -->
+              <div onclick="selectBgStyle('#000000', this)" class="bg-style-dot" title="အနက်" style="background: #000000; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၃။ နီကြည် -->
+              <div onclick="selectBgStyle('rgba(185,28,28,0.75)', this)" class="bg-style-dot" title="နီကြည်" style="background: #b91c1c; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၄။ ပြာကြည် -->
+              <div onclick="selectBgStyle('rgba(30,58,138,0.75)', this)" class="bg-style-dot" title="ပြာကြည်" style="background: #1e3a8a; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၅။ စိမ်းကြည် -->
+              <div onclick="selectBgStyle('rgba(20,83,45,0.75)', this)" class="bg-style-dot" title="စိမ်းကြည်" style="background: #14532d; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၆။ ဝါကြည် -->
+              <div onclick="selectBgStyle('rgba(180,83,9,0.75)', this)" class="bg-style-dot" title="ဝါကြည်" style="background: #b45309; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၇။ ခရမ်းကြည် -->
+              <div onclick="selectBgStyle('rgba(109,40,217,0.75)', this)" class="bg-style-dot" title="ခရမ်းကြည်" style="background: #6d28d9; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <!-- ၈။ အနားကွပ် (နောက်ခံမပါ) -->
+              <div onclick="selectBgStyle('stroke', this)" class="bg-style-dot" title="စာသားအနားကွပ် (နောက်ခံမပါ)" style="background: transparent; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px dashed #ffffff; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: bold;">⭕</div>
             </div>
           </div>
 
@@ -350,7 +358,7 @@ function setupTouchDragOverlay(elementId) {
   let startX, startY, origX, origY;
 
   function onStart(e) {
-    if (e.target.id.includes("resize-handle")) return;
+    if (e.target.id && e.target.id.includes("resize-handle")) return;
     isDragging = true;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -465,13 +473,17 @@ function toggleBlurBox() {
 
 function selectFontColor(color, el) {
   srtFontColor = color;
-  document.querySelectorAll(".color-dot").forEach(d => d.style.borderColor = "transparent");
+  document.querySelectorAll(".font-color-dot").forEach(d => d.style.borderColor = "transparent");
   el.style.borderColor = "#38bdf8";
   applySrtStyles();
 }
 
-function selectBgStyle(style) {
+function selectBgStyle(style, el) {
   srtBgStyle = style;
+  document.querySelectorAll(".bg-style-dot").forEach(d => {
+    d.style.borderColor = (d.getAttribute("title") && d.getAttribute("title").includes("အနားကွပ်")) ? "#ffffff" : "transparent";
+  });
+  el.style.borderColor = "#38bdf8";
   applySrtStyles();
 }
 
@@ -597,6 +609,7 @@ async function extractAudioOptimized(file) {
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
   const targetSampleRate = 16000;
+  // Payload မကျော်စေရန် STT အတွက်သာ အများဆုံး ၇၀ စက္ကန့် ဖြတ်ယူသည်
   const maxSeconds = Math.min(audioBuffer.duration, 70);
   const targetLength = Math.floor(maxSeconds * targetSampleRate);
 
@@ -639,6 +652,8 @@ async function extractAudioOptimized(file) {
   let binary = "";
   const bytes = new Uint8Array(outBuffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  
+  // audioBuffer.duration သည် ဗီဒီယို၏ အစစ်အမှန် ကြာချိန်အပြည့်အစုံ ဖြစ်သည် (ဥပမာ- ၁၈၂ စက္ကန့်)
   return { audioBase64: btoa(binary), duration: audioBuffer.duration };
 }
 
@@ -673,7 +688,8 @@ async function handleGenerateRecap() {
 
     const { audioBase64, duration } = await extractAudioOptimized(file);
 
-    pTitle.innerText = "Gemini Flash က Recap ဇာတ်လမ်း ရေးသားနေပါသည်...";
+    // Step 1: STT + Gemini Flash ဖြင့် ဗီဒီယိုအရှည်အလိုက် စာသား ထုတ်ယူခြင်း
+    pTitle.innerText = "Gemini Flash က ဗီဒီယိုအပြည့် Recap ဇာတ်လမ်း ရေးသားနေပါသည်...";
     pPercent.innerText = "55%";
     pBar.style.width = "55%";
 
@@ -689,6 +705,7 @@ async function handleGenerateRecap() {
     const recapScript = scriptData.script;
     scriptText.value = recapScript;
 
+    // Step 2: စာသားအရွယ်အစားအလိုက် အသံဖိုင် ရယူခြင်း (Timeout ကင်းစေရန် သီးသန့်ခေါ်သည်)
     pTitle.innerText = "မြန်မာ အသံသရုပ်ဆောင် အသံဖိုင် ဖန်တီးနေပါသည်...";
     pPercent.innerText = "80%";
     pBar.style.width = "80%";
@@ -968,7 +985,6 @@ async function exportHardcodedVideo() {
   renderLoop();
 }
 
-// စာမျက်နှာ စတင်ဖွင့်ချိန်တွင် အလိုအလျောက် UI ဆွဲပေးခြင်း
 if (document.readyState !== "loading") {
   initRecapsView();
 } else {
