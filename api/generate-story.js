@@ -80,15 +80,17 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, voice); } catch (e) { return await fetchGoogleTTSSafe(text); }
 }
 
-// ၃။ AI Text Engine
-async function runAI(prompt) {
+// ၃။ Model Tracker Engine (လက်ရှိသုံးနေသော Model ကို အတိအကျ ပြန်ပို့ပေးသည်)
+async function runStoryAIWithModel(prompt) {
   const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"];
 
   if (process.env.GEMINI_API_KEY) {
     for (const m of GEMINI_MODELS) {
       try {
         const response = await ai.models.generateContent({ model: m, contents: prompt });
-        if (response && response.text) return response.text.trim();
+        if (response && response.text) {
+          return { text: response.text.trim(), modelUsed: m };
+        }
       } catch (e) {}
     }
   }
@@ -100,7 +102,7 @@ async function runAI(prompt) {
         messages: [{ role: "user", content: prompt }]
       });
       const content = gRes.choices[0]?.message?.content?.trim();
-      if (content) return content;
+      if (content) return { text: content, modelUsed: "Groq (Llama-3.1-8B)" };
     } catch (err) {}
   }
 
@@ -108,21 +110,21 @@ async function runAI(prompt) {
   const res = await fetch("https://text.pollinations.ai/", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: prompt }]
-    })
+    body: JSON.stringify({ messages: [{ role: "user", content: prompt }] })
   });
-  if (res.ok) return (await res.text()).trim();
+  if (res.ok) {
+    const pText = await res.text();
+    return { text: pText.trim(), modelUsed: "Pollinations AI" };
+  }
 
-  throw new Error("AI ဆာဗာ အလုပ်မလုပ်ပါ။");
+  throw new Error("AI ဆာဗာ အားလုံး ချိတ်ဆက်မရပါ။ ခေတ္တစောင့်ပြီး ထပ်ကြိုးစားပေးပါ။");
 }
 
-// Reasoning JSON အမှိုက်များ နှင့် English စာစုများကို အပြီးတိုင် သန့်စင်ပေးသည့် စနစ်
-function cleanPureBurmeseText(raw) {
+// Reasoning Tokens နှင့် JSON အမှိုက်များကို လုံးဝဖယ်ရှားသည့် Sanitizer
+function cleanPureBurmese(raw) {
   if (!raw) return "";
   let text = raw.trim();
 
-  // JSON format ဖြင့် ထွက်လာပါက parse ပြုလုပ်ပြီး content ကိုသာ ယူခြင်း
   try {
     if (text.startsWith("{") && text.endsWith("}")) {
       const obj = JSON.parse(text);
@@ -130,27 +132,23 @@ function cleanPureBurmeseText(raw) {
     }
   } catch (e) {}
 
-  // DeepSeek reasoning သို့မဟုတ် raw json tags များ ဖြတ်ထုတ်ခြင်း
   text = text.replace(/<think>[\s\S]*?<\/think>/gi, "")
              .replace(/{"role":"assistant"[\s\S]*?"content":\s*"/gi, "")
              .replace(/{"reasoning"[\s\S]*?"content":\s*"/gi, "")
              .replace(/```[a-z]*\n?/gi, "").replace(/```/g, "")
              .replace(/\\n/g, "\n").replace(/\\"/g, '"');
 
-  // AI ၏ English Planning စာသားများကို အပြီးအပိုင် ဖြတ်ထုတ်ခြင်း
   text = text.replace(/(?:(?:We need about|Let's write|Word count|I'll count|Sure, here is)[\s\S]*?\n)/gi, "");
 
   const lines = text.split("\n");
-  const burmeseLines = lines.filter(line => {
+  const burmeseOnly = lines.filter(line => {
     const t = line.trim();
     if (!t) return false;
-    const isMetaEng = /^(reasoning|content|role|assistant|words?|count|note):/i.test(t);
-    if (isMetaEng) return false;
-    // မြန်မာစာလုံး ပါဝင်သော စာကြောင်းများကိုသာ ကောက်ယူမည်
+    if (/^(reasoning|content|role|assistant|words?|count|note):/i.test(t)) return false;
     return /[\u1000-\u109F]/.test(t);
   });
 
-  return burmeseLines.join("\n").trim() || text.replace(/[a-zA-Z0-9{}\"\\:;]/g, "").trim();
+  return burmeseOnly.join("\n").trim() || text.replace(/[a-zA-Z0-9{}\"\\:;]/g, "").trim();
 }
 
 module.exports = async (req, res) => {
@@ -159,109 +157,67 @@ module.exports = async (req, res) => {
   try {
     const { action, topic, genre, format, durationMinutes, scriptText, voice, photoCount } = req.body;
 
-    // အဆင့် ၁: ပုံပြင်စာသား နှင့် အသံဖိုင် (TTS) ကို မြန်မာလို သီးသန့် ထုတ်ယူခြင်း
-    if (action === "generate_story_and_audio") {
+    // အဆင့် ၁: ပုံပြင်စာသား ရေးထုတ်ခြင်း (စာသားသက်သက်)
+    if (action === "generate_story_text") {
       if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
-      const selectedMins = parseInt(durationMinutes) || 1;
-      const words = selectedMins * 105;
+      const words = (parseInt(durationMinutes) || 1) * 105;
 
-      if (format === "series") {
-        const prompt = `Write a continuous 6-episode story series in 100% pure Burmese about "${topic}" (${genre}).
-Each episode MUST contain around ${words} Burmese words.
-CRITICAL: Write strictly in pure Burmese script. Absolutely NO English words, thoughts, or reasoning.
-Separate episodes with:
-=== အပိုင်း ၁ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၂ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၃ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၄ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၅ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၆ ===
-[ဇာတ်လမ်းစာသား]`;
-
-        const rawResult = await runAI(prompt);
-        const parts = rawResult.split(/=== အပိုင်း\s*\d+\s*===/);
-
-        const episodes = [];
-        for (let i = 1; i <= 6; i++) {
-          const epText = cleanPureBurmeseText(parts[i] || parts[i - 1] || "");
-          episodes.push({
-            ep: i,
-            title: `အပိုင်း ${i}`,
-            text: epText || `${topic} အပိုင်း ${i} ဇာတ်လမ်းစာသား`
-          });
-        }
-
-        const audioBase64 = await fetchAudioSafe(episodes[0].text, voice);
-        return res.status(200).json({
-          format: "series",
-          series_title: topic,
-          episodes: episodes,
-          audioBase64: audioBase64
-        });
-
-      } else {
-        // Movie format
-        const prompt = `Write a complete movie narrative story script in 100% pure Burmese about "${topic}" (${genre}).
-Length: approximately ${words} Burmese words. Break thoughts into short sentences using commas.
+      const prompt = `Write an engaging storytelling narrative in 100% pure Burmese about "${topic}" (${genre}).
+Approximate word count: ${words} Burmese words.
 CRITICAL RULES:
-- Output ONLY the spoken Burmese story text.
-- Do NOT output any English words, translation, word counts, or reasoning.
-- Write purely in Burmese script.`;
+- Output ONLY the Burmese story narration.
+- Do NOT output any English letters, planning notes, thinking tokens, or explanations.`;
 
-        const rawStory = await runAI(prompt);
-        const storyText = cleanPureBurmeseText(rawStory);
+      const aiRes = await runStoryAIWithModel(prompt);
+      const storyText = cleanPureBurmese(aiRes.text);
 
-        const audioBase64 = await fetchAudioSafe(storyText, voice);
-        return res.status(200).json({
-          format: "movie",
-          movie_title: topic,
-          story_text: storyText,
-          audioBase64: audioBase64
-        });
-      }
+      return res.status(200).json({
+        story_text: storyText,
+        model_used: aiRes.modelUsed
+      });
     }
 
-    // အဆင့် ၂: မြန်မာစာသားကို အခြေခံပြီး English Photo Prompts သီးသန့် ဘာသာပြန် ထုတ်ယူခြင်း
-    if (action === "generate_prompts") {
+    // အဆင့် ၂: မြန်မာစာသားမှ English Photo Prompts သို့ Translate လုပ်ခြင်း
+    if (action === "translate_to_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
 
-      const prompt = `Read this Burmese story:
+      const prompt = `Read this Burmese story snippet:
 "${scriptText.substring(0, 500)}"
 
-Task: Extract the key visual scenes from this Burmese story and translate them into exactly ${count} highly descriptive, cinematic image generation prompts in English.
-Make them ultra realistic, 8k resolution, atmospheric lighting, masterpiece quality.
-Output ONLY the ${count} prompts, one prompt per line, without numbers.`;
+Task: Extract exactly ${count} cinematic scene descriptions for AI image generation.
+Translate the key visual scenes into descriptive, atmospheric English image prompts.
+Output format: Output ONLY the ${count} English prompts, each on a new line, without numbers or introductory text.`;
 
-      const rawPrompts = await runAI(prompt);
-      const promptLines = rawPrompts.split("\n")
+      const aiRes = await runStoryAIWithModel(prompt);
+      const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^\d+[\.\)]\s*/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
 
-      const finalPrompts = [];
+      const promptsList = [];
       for (let i = 0; i < count; i++) {
-        finalPrompts.push(promptLines[i] || `cinematic 8k scene ${i + 1}, dark atmospheric environment, ultra detailed, photorealistic`);
+        promptsList.push(rawLines[i] || `cinematic scene ${i + 1} masterpiece, photorealistic, 8k resolution, dramatic lighting`);
       }
 
-      return res.status(200).json({ prompts: finalPrompts });
+      return res.status(200).json({
+        prompts_text: promptsList.join("\n\n"),
+        prompts_array: promptsList,
+        model_used: aiRes.modelUsed
+      });
     }
 
-    // အသံဖိုင် သီးသန့် ထုတ်ယူခြင်း (Series Episode ပြောင်းလဲသည့်အခါ)
+    // အဆင့် ၄: Text to Speech (TTS) ထုတ်ယူခြင်း
     if (action === "generate_audio") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const audioBase64 = await fetchAudioSafe(scriptText, voice);
-      return res.status(200).json({ audioBase64 });
+      const voiceLabel = (voice && voice.includes("nilar")) ? "Edge-TTS (နီလာ)" : (voice && voice.includes("thiha")) ? "Edge-TTS (သီဟ)" : "Google TTS";
+      return res.status(200).json({ audioBase64, model_used: voiceLabel });
     }
 
     return res.status(400).json({ error: "Invalid action" });
 
   } catch (err) {
-    console.error(err);
+    console.error("Story API Error:", err);
     return res.status(500).json({ error: err.message || "လုပ်ဆောင်မှု မအောင်မြင်ပါ" });
   }
 };
