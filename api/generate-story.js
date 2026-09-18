@@ -48,16 +48,21 @@ async function fetchBurmeseVoice(text, voice) {
 }
 
 async function runGeminiStoryJson(prompt) {
-  const geminiModels = [
+  const ACTIVE_MODELS = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
     "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash"
+    "gemini-2.5-flash-lite"
   ];
 
-  let lastGeminiError = null;
+  let lastError = null;
 
   if (process.env.GEMINI_API_KEY) {
-    for (const m of geminiModels) {
+    for (const m of ACTIVE_MODELS) {
       try {
         const res = await ai.models.generateContent({
           model: m,
@@ -66,12 +71,12 @@ async function runGeminiStoryJson(prompt) {
         });
         if (res && res.text) return res.text.trim();
       } catch (e) {
-        lastGeminiError = e.message;
-        console.warn(`Gemini (${m}) failed:`, e.message);
+        lastError = e.message;
+        console.warn(`Gemini (${m}) error:`, e.message);
       }
     }
   } else {
-    lastGeminiError = "GEMINI_API_KEY မရှိပါ";
+    lastError = "GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ";
   }
 
   // Fallback to Groq
@@ -87,10 +92,10 @@ async function runGeminiStoryJson(prompt) {
     const content = gRes.choices[0]?.message?.content?.trim();
     if (content) return content;
   } catch (groqErr) {
-    console.warn("Groq fallback failed:", groqErr.message);
+    console.warn("Groq fallback error:", groqErr.message);
   }
 
-  throw new Error(`AI Model Error: ${lastGeminiError}`);
+  throw new Error(`AI Model Error: ${lastError}`);
 }
 
 module.exports = async (req, res) => {
@@ -115,7 +120,6 @@ module.exports = async (req, res) => {
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
-      // Series: Episode တစ်ခုစီတိုင်းကို ရွေးချယ်ထားသော မိနစ်စာနှုန်းဖြင့် ၆ ပိုင်းလုံး အပြည့်အစုံ ရေးသားခြင်း
       const epWords = selectedMins * wordsPerMinute;
       const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}). 
 IMPORTANT: Each episode MUST contain around ${epWords} Burmese words so that each episode lasts approximately ${selectedMins} minute(s) when read aloud.
