@@ -47,9 +47,17 @@ async function fetchBurmeseVoice(text, voice) {
   throw new Error("အသံဒေတာ ရယူ၍မရပါ");
 }
 
-async function runLLMCompletion(prompt) {
-  // ၁။ Gemini စံ Models များဖြင့် စတင်စမ်းသပ်ခြင်း
-  const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+async function runGeminiStoryJson(prompt) {
+  const geminiModels = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash"
+  ];
+
+  let lastGeminiError = null;
+
   if (process.env.GEMINI_API_KEY) {
     for (const m of geminiModels) {
       try {
@@ -60,31 +68,31 @@ async function runLLMCompletion(prompt) {
         });
         if (res && res.text) return res.text.trim();
       } catch (e) {
-        console.warn(`Gemini (${m}) failed, trying fallback...`);
+        lastGeminiError = e.message;
+        console.warn(`Gemini (${m}) failed:`, e.message);
       }
     }
+  } else {
+    lastGeminiError = "Vercel တွင် GEMINI_API_KEY မထည့်သွင်းရသေးပါ";
   }
 
-  // ၂။ Groq အခမဲ့ Models များဖြင့် Fallback ခေါ်ယူခြင်း (404 Error ကင်းစင်စေသော List)
-  const groqModels = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-70b-8192"];
-  for (const gm of groqModels) {
-    try {
-      const gRes = await groq.chat.completions.create({
-        model: gm,
-        messages: [
-          { role: "system", content: "You output strictly valid JSON only." },
-          { role: "user", content: prompt }
-        ],
-        response_format: { type: "json_object" }
-      });
-      const content = gRes.choices[0]?.message?.content?.trim();
-      if (content) return content;
-    } catch (err) {
-      console.warn(`Groq (${gm}) failed:`, err.message);
-    }
+  // Fallback to Groq
+  try {
+    const gRes = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "You output strictly valid JSON only." },
+        { role: "user", content: prompt }
+      ],
+      response_format: { type: "json_object" }
+    });
+    const content = gRes.choices[0]?.message?.content?.trim();
+    if (content) return content;
+  } catch (groqErr) {
+    console.warn("Groq fallback failed:", groqErr.message);
   }
 
-  throw new Error("AI Models များအားလုံးမှ တုံ့ပြန်မှု မရရှိပါ");
+  throw new Error(`Gemini Error (${lastGeminiError})`);
 }
 
 module.exports = async (req, res) => {
@@ -105,12 +113,12 @@ module.exports = async (req, res) => {
 
     if (format === "movie") {
       const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
-      const jsonStr = await runLLMCompletion(prompt);
+      const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
       const epWords = Math.round(totalWords / 6);
       const prompt = `Write a 6-episode continuous story series in Burmese for topic: "${topic}" (${genre}). Each episode must have around ${epWords} words. Output JSON: {"series_title": "ခေါင်းစဉ်", "episodes": [{"ep": 1, "title": "အပိုင်း ၁", "text": "စာသား"}, {"ep": 2, "title": "အပိုင်း ၂", "text": "စာသား"}, {"ep": 3, "title": "အပိုင်း ၃", "text": "စာသား"}, {"ep": 4, "title": "အပိုင်း ၄", "text": "စာသား"}, {"ep": 5, "title": "အပိုင်း ၅", "text": "စာသား"}, {"ep": 6, "title": "အပိုင်း ၆", "text": "စာသား"}]}`;
-      const jsonStr = await runLLMCompletion(prompt);
+      const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json({ series: JSON.parse(jsonStr) });
     }
 
