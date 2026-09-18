@@ -17,7 +17,7 @@ async function runGeminiRecapFast(prompt, frames = []) {
 
   if (Array.isArray(frames) && frames.length > 0) {
     for (const f of frames) {
-      if (typeof f === "string" && f.length > 100) {
+      if (typeof f === "string" && f.length > 50) {
         contents.push({
           inlineData: {
             mimeType: "image/jpeg",
@@ -37,7 +37,7 @@ async function runGeminiRecapFast(prompt, frames = []) {
         });
         if (response && response.text) return response.text.trim();
       } catch (err) {
-        console.warn(`Gemini (${model}) multimodal error:`, err.message);
+        // Fallback to next active flash model
       }
     }
   }
@@ -61,7 +61,7 @@ module.exports = async (req, res) => {
     const { audioBase64, frames, tone, videoDuration } = req.body;
     if (!audioBase64) return res.status(400).json({ error: "အသံဖိုင်ဒေတာ မပါဝင်ပါ" });
 
-    // Step 1: STT Transcription
+    // Step 1: STT Transcription via Whisper
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const file = await toFile(audioBuffer, "audio.wav");
     const transcript = await groq.audio.transcriptions.create({
@@ -69,21 +69,20 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // Step 2: တိကျသော စကားလုံးအရေအတွက် တွက်ချက်ခြင်း (ဗီဒီယို မကျော်စေရန် ၁ မိနစ်လျှင် ၁၀၅ လုံးနှုန်းထားသည်)
+    // Step 2: စကားလုံး အရေအတွက်ကို ဗီဒီယိုစက္ကန့်အတိုင်း ကွက်တိကန့်သတ်ခြင်း (၁ မိနစ်လျှင် ၁၀၅ လုံးနှုန်း)
     const duration = Math.max(10, parseInt(videoDuration) || 30);
     const targetWordCount = Math.max(15, Math.round((duration / 60) * 105));
 
     const prompt = `You are an expert movie recap storyteller.
 Audio transcript: "${transcript.text}".
-Visual snapshots are attached showing the scene.
+Visual snapshots showing scene action are attached.
 
-CRITICAL TIMING & LENGTH RULE:
+CRITICAL LENGTH RULE:
 - The video is EXACTLY ${duration} seconds long.
-- You MUST write STRICTLY between ${Math.max(10, targetWordCount - 8)} and ${targetWordCount} Burmese words.
-- DO NOT EXCEED ${targetWordCount} words. If you write more words, the voiceover will exceed the video length.
-- Tone: "${tone}".
-- Break sentences with commas so speech pace is steady and natural.
-- Output ONLY the spoken Burmese script text without titles, markdown, quotes, or asterisks.`;
+- Write STRICTLY between ${Math.max(12, targetWordCount - 8)} and ${targetWordCount} Burmese words.
+- DO NOT write more than ${targetWordCount} words.
+- Tone: "${tone}". Use short phrases with commas.
+- Output ONLY the spoken Burmese script text without titles, quotes, markdown, or asterisks.`;
 
     const recapScript = await runGeminiRecapFast(prompt, frames);
 
