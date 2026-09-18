@@ -1,308 +1,1707 @@
-const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
+"use strict";
 
-async function fetchGoogleTTS(text) {
-  const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
-  const chunks = [];
-  for (const s of sentences) {
-    const trimmed = s.trim();
-    if (!trimmed) continue;
-    if (trimmed.length > 50) {
-      chunks.push(...(trimmed.match(/.{1,50}/g) || [trimmed]));
-    } else {
-      chunks.push(trimmed);
-    }
+/**
+ * NLO AI Studio - Story / TTS API
+ * Vercel Serverless Function
+ *
+ * Features:
+ * - AI Burmese Story Generation
+ * - Manual Script Support
+ * - Movie / Series
+ * - Burmese Scene Prompt Generation
+ * - Edge TTS via HuggingFace Gradio Space
+ * - Google TTS fallback
+ * - Gemini fallback chain
+ * - Groq fallback
+ * - Pollinations fallback
+ *
+ * Environment Variables:
+ * GEMINI_API_KEY
+ * GOOGLE_API_KEY              optional alias
+ * GROQ_API_KEY
+ *
+ * Optional:
+ * HF_SPACE_URL
+ * GEMINI_PRIMARY_MODEL
+ * GROQ_MODEL
+ */
+
+// ============================================================
+// CONFIG
+// ============================================================
+
+const HF_SPACE_URL =
+  process.env.HF_SPACE_URL ||
+  "https://nlopro-burmese-tts-api.hf.space";
+
+const DEFAULT_GEMINI_MODELS = [
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-2.5-flash"
+];
+
+const GEMINI_MODELS = process.env.GEMINI_PRIMARY_MODEL
+  ? [
+      process.env.GEMINI_PRIMARY_MODEL,
+      ...DEFAULT_GEMINI_MODELS.filter(
+        (m) => m !== process.env.GEMINI_PRIMARY_MODEL
+      )
+    ]
+  : DEFAULT_GEMINI_MODELS;
+
+const GROQ_MODEL =
+  process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
+
+const LIMITS = {
+  maxTopicLength: 500,
+  maxGenreLength: 200,
+  maxScriptLength: 50000,
+  maxPromptLength: 50000,
+  maxPhotoCount: 20,
+  maxDurationMinutes: 120
+};
+
+const TIMEOUTS = {
+  gemini: 15000,
+  groq: 12000,
+  pollinations: 15000,
+  hfTTS: 15000,
+  googleTTS: 12000
+};
+
+
+// ============================================================
+// GENERAL HELPERS
+// ============================================================
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNonEmptyString(value) {
+  return typeof value === "string" && value.trim().length > 0;
+}
+
+function clamp(value, min, max) {
+  return Math.min(Math.max(value, min), max);
+}
+
+function normalizeText(text) {
+  if (!isNonEmptyString(text)) return "";
+
+  return String(text)
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\uFEFF/g, "")
+    .trim();
+}
+
+function getEnv(name) {
+  const value = process.env[name];
+  return isNonEmptyString(value) ? value.trim() : null;
+}
+
+function getClientIP(req) {
+  const forwarded = req.headers?.["x-forwarded-for"];
+
+  if (forwarded) {
+    return String(forwarded).split(",")[0].trim();
   }
 
-  const audioBuffers = await Promise.all(
-    chunks.map(async (chunk) => {
-      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk.trim())}&tl=my&client=tw-ob`;
-      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://translate.google.com/" } });
-      if (!res.ok) throw new Error("Google TTS Fail");
-      return Buffer.from(await res.arrayBuffer());
-    })
+  return (
+    req.headers?.["x-real-ip"] ||
+    req.socket?.remoteAddress ||
+    "unknown"
   );
-  return Buffer.concat(audioBuffers).toString("base64");
 }
 
-async function fetchEdgeTTS(text, voice = "edge-thiha") {
-  const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
+
+// ============================================================
+// SAFE FETCH WITH TIMEOUT
+// ============================================================
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-  let postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: [text, voiceName] }),
-    signal: controller.signal
-  }).catch(() => null);
-
-  if (!postRes || !postRes.ok) {
-    postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [text] }),
-      signal: controller.signal
-    });
-  }
-  clearTimeout(timeoutId);
-
-  if (!postRes.ok) throw new Error("HF TTS Fail");
-  const { event_id } = await postRes.json();
-
-  const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
-  const streamText = await streamRes.text();
-
-  for (const line of streamText.split("\n")) {
-    if (line.startsWith("data:")) {
-      const parsed = JSON.parse(line.replace("data:", "").trim());
-      if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-    }
-  }
-  throw new Error("TTS Empty");
-}
-
-async function fetchAudioSafe(text, voice) {
-  if (voice === "google-my-female") {
-    try { return await fetchGoogleTTS(text); } catch (e) { return await fetchEdgeTTS(text, "edge-nilar"); }
-  }
-  if (voice && voice.includes("nilar")) {
-    try { return await fetchEdgeTTS(text, "edge-nilar"); } catch (e) { return await fetchGoogleTTS(text); }
-  }
-  try { return await fetchEdgeTTS(text, "edge-thiha"); } catch (e) { return await fetchGoogleTTS(text); }
-}
-
-async function callDirectGemini(apiKey, model, prompt) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 8000);
-
-  const res = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
-      generationConfig: { temperature: 0.7, maxOutputTokens: 1200 }
-    }),
-    signal: controller.signal
-  });
-  clearTimeout(timeout);
-
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || `Gemini Status ${res.status}`);
-  }
-
-  const data = await res.json();
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!text) throw new Error("Empty response from Gemini");
-  return text.trim();
-}
-
-async function callDirectGroq(apiKey, prompt) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 6000);
-
-  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: "llama-3.3-70b-versatile",
-      messages: [{ role: "user", content: prompt }],
-      temperature: 0.7,
-      max_tokens: 1200
-    }),
-    signal: controller.signal
-  });
-  clearTimeout(timeout);
-
-  if (!res.ok) throw new Error("Groq API Error");
-  const data = await res.json();
-  return data.choices?.[0]?.message?.content?.trim();
-}
-
-async function runFastAI(prompt) {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
-
-  if (geminiKey) {
-    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
-    for (const m of models) {
-      try {
-        const result = await callDirectGemini(geminiKey, m, prompt);
-        if (result) return { text: result, modelUsed: m };
-      } catch (e) {}
-    }
-  }
-
-  if (groqKey) {
-    try {
-      const gResult = await callDirectGroq(groqKey, prompt);
-      if (gResult) return { text: gResult, modelUsed: "Groq (Llama-3.3)" };
-    } catch (e) {}
-  }
+  const timeoutId = setTimeout(() => {
+    controller.abort();
+  }, timeoutMs);
 
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    const pRes = await fetch("https://text.pollinations.ai/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: prompt }]
-      }),
+    return await fetch(url, {
+      ...options,
       signal: controller.signal
     });
-    clearTimeout(timeout);
-
-    if (pRes.ok) {
-      const pText = await pRes.text();
-      if (pText) return { text: pText.trim(), modelUsed: "Pollinations AI" };
-    }
-  } catch (e) {}
-
-  throw new Error("AI မော်ဒယ် ချိတ်ဆက်မှု မအောင်မြင်ပါ။ Vercel Environment Variables ထဲတွင် GEMINI_API_KEY ထည့်သွင်းထားခြင်း ရှိမရှိ စစ်ဆေးပေးပါ။");
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
+
+
+// ============================================================
+// BURMESE TEXT HELPERS
+// ============================================================
+
+function containsBurmese(text) {
+  return /[\u1000-\u109F]/.test(text || "");
+}
+
+function countBurmese(text) {
+  return (String(text).match(/[\u1000-\u109F]/g) || []).length;
+}
+
+function countLatin(text) {
+  return (String(text).match(/[A-Za-z]/g) || []).length;
+}
+
+function cleanAIFormatting(text) {
+  if (!text) return "";
+
+  let result = String(text);
+
+  result = result
+    .replace(/<think>[\s\S]*?<\/think>/gi, "")
+    .replace(/```(?:text|markdown|burmese|myanmar)?/gi, "")
+    .replace(/```/g, "")
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, "\n")
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n");
+
+  return result.trim();
+}
+
+
+// ============================================================
+// STRICT BURMESE STORY CLEANER
+// ============================================================
 
 function filterStrictBurmeseStory(rawText) {
   if (!rawText) return "";
-  let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "")
-                    .replace(/```[a-z]*\n?/gi, "").replace(/```/g, "")
-                    .replace(/\\n/g, "\n").replace(/\\"/g, '"');
 
-  const firstBurmeseIdx = text.search(/[\u1000-\u109F]/);
-  if (firstBurmeseIdx !== -1) {
-    text = text.substring(firstBurmeseIdx);
-  }
+  let text = cleanAIFormatting(rawText);
+
+  // Remove common AI headings.
+  text = text
+    .replace(
+      /^(ဇာတ်လမ်း|ဇာတ်ကြောင်း|ဇာတ်ညွှန်း|story|narration)\s*[:\-–—]*/i,
+      ""
+    )
+    .trim();
 
   const lines = text.split("\n");
-  const cleanPhrases = [];
+  const output = [];
 
   for (let line of lines) {
-    let trimmed = line.trim();
-    if (!trimmed) continue;
+    line = line.trim();
 
-    const engCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
-    if (engCount > 2) continue;
+    if (!line) continue;
 
-    trimmed = trimmed.replace(/^[\s\d၀-၉\.\)\-–—:]+/g, "").trim();
-    trimmed = trimmed.replace(/[a-zA-Z0-9_\-–—#*@$%&+=<>{}\[\]\\\/^~`|]/g, "").trim();
+    // Remove markdown bullets.
+    line = line.replace(
+      /^\s*(?:[-*•]+|\d+[.)]|[၀-၉]+[.)])\s*/,
+      ""
+    );
 
-    const myanCount = (trimmed.match(/[\u1000-\u109F]/g) || []).length;
-    if (myanCount >= 2) {
-      cleanPhrases.push(trimmed);
+    // Remove episode / scene labels.
+    line = line.replace(
+      /^\s*(?:scene|episode|အပိုင်း|ဇာတ်ဝင်ခန်း)\s*[\d၀-၉]*\s*[:.)\-–—]*/i,
+      ""
+    );
+
+    line = line.trim();
+
+    if (!line) continue;
+
+    // Keep lines that contain meaningful Burmese.
+    const myCount = countBurmese(line);
+    const latinCount = countLatin(line);
+
+    if (myCount >= 2) {
+      /*
+       * Do NOT remove the entire line merely because it contains
+       * a few English characters.
+       *
+       * This prevents Burmese names / abbreviations from disappearing.
+       */
+      if (latinCount > 8 && myCount < latinCount) {
+        continue;
+      }
+
+      output.push(line);
     }
   }
 
-  let finalStory = cleanPhrases.join(" ").replace(/\s+/g, " ").trim();
-  finalStory = finalStory.replace(/။\s*/g, "။\n\n").trim();
+  let finalStory = output.join(" ");
 
-  return finalStory || text.match(/[\u1000-\u104F\s၊။]+/g)?.join(" ").trim() || "";
+  finalStory = finalStory
+    .replace(/[ \t]+/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+
+  // Normalize Burmese punctuation spacing.
+  finalStory = finalStory
+    .replace(/\s+။/g, "။")
+    .replace(/။\s*/g, "။ ")
+    .replace(/\s+၊/g, "၊")
+    .replace(/၊\s*/g, "၊ ");
+
+  return finalStory.trim();
 }
 
-module.exports = async (req, res) => {
-  if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
-  try {
-    const { action, topic, genre, format, durationMinutes, scriptText, voice, photoCount } = req.body;
+// ============================================================
+// SCRIPT VALIDATION
+// ============================================================
 
-    if (action === "generate_audio") {
-      if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
-      const audioBase64 = await fetchAudioSafe(scriptText, voice);
-      const voiceLabel = (voice && voice.includes("nilar")) ? "Edge-TTS (နီလာ)" : (voice && voice.includes("thiha")) ? "Edge-TTS (သီဟ)" : "Google TTS";
-      return res.status(200).json({ audioBase64, model_used: voiceLabel });
+function validateScript(scriptText) {
+  const script = normalizeText(scriptText);
+
+  if (!script) {
+    throw new Error("စာသား မပါဝင်ပါ");
+  }
+
+  if (script.length < 2) {
+    throw new Error("စာသား အလွန်တိုနေပါသည်");
+  }
+
+  if (script.length > LIMITS.maxScriptLength) {
+    throw new Error(
+      `Script သည် ${LIMITS.maxScriptLength.toLocaleString()} characters ထက် မကျော်ရပါ`
+    );
+  }
+
+  return script;
+}
+
+
+// ============================================================
+// TEXT CHUNKING
+// ============================================================
+
+function splitTextForTTS(text, maxLength = 180) {
+  const clean = normalizeText(text);
+
+  if (!clean) return [];
+
+  const sentences =
+    clean.match(/[^။!?！？\n]+[။!?！？\n]?/g) || [clean];
+
+  const chunks = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    let part = sentence.trim();
+
+    if (!part) continue;
+
+    if ((current + " " + part).trim().length <= maxLength) {
+      current = `${current} ${part}`.trim();
+      continue;
     }
 
-    if (action === "translate_to_prompts") {
-      if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
-      const count = parseInt(photoCount) || 4;
+    if (current) {
+      chunks.push(current);
+      current = "";
+    }
 
-      const prompt = `Read this Burmese story snippet: "${scriptText.substring(0, 400)}"
-Extract exactly ${count} cinematic scenes and translate into vivid English image generation prompts.
-Output format: Output ONLY ${count} English prompts, one per line. No numbers, no bullet points.`;
+    // Sentence itself is too long.
+    while (part.length > maxLength) {
+      let cut = part.lastIndexOf(" ", maxLength);
 
-      const aiRes = await runFastAI(prompt);
-      const rawLines = aiRes.text.split("\n")
-        .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
-        .filter(l => l.length > 8);
-
-      const promptsList = [];
-      for (let i = 0; i < count; i++) {
-        promptsList.push(rawLines[i] || `cinematic scene ${i + 1}, ultra realistic lighting, 8k masterpiece`);
+      if (cut < Math.floor(maxLength * 0.5)) {
+        cut = maxLength;
       }
 
+      chunks.push(part.slice(0, cut).trim());
+      part = part.slice(cut).trim();
+    }
+
+    if (part) {
+      current = part;
+    }
+  }
+
+  if (current) {
+    chunks.push(current);
+  }
+
+  return chunks.filter(Boolean);
+}
+
+
+// ============================================================
+// GOOGLE TTS FALLBACK
+// ============================================================
+
+async function fetchGoogleTTSChunk(text) {
+  const url =
+    "https://translate.google.com/translate_tts" +
+    `?ie=UTF-8&q=${encodeURIComponent(text)}` +
+    "&tl=my&client=tw-ob";
+
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: {
+        "User-Agent":
+          "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        Referer: "https://translate.google.com/"
+      }
+    },
+    TIMEOUTS.googleTTS
+  );
+
+  if (!res.ok) {
+    throw new Error(`Google TTS HTTP ${res.status}`);
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+
+  if (!buffer.length) {
+    throw new Error("Google TTS returned empty audio");
+  }
+
+  return buffer;
+}
+
+async function fetchGoogleTTS(text) {
+  const chunks = splitTextForTTS(text, 180);
+
+  if (!chunks.length) {
+    throw new Error("Google TTS: Empty text");
+  }
+
+  const buffers = [];
+
+  for (const chunk of chunks) {
+    const buffer = await fetchGoogleTTSChunk(chunk);
+    buffers.push(buffer);
+
+    // Small delay helps reduce aggressive request bursts.
+    if (chunks.length > 1) {
+      await sleep(80);
+    }
+  }
+
+  return Buffer.concat(buffers).toString("base64");
+}
+
+
+// ============================================================
+// HF / GRADIO EDGE TTS
+// ============================================================
+
+function getEdgeVoiceName(voice) {
+  const value = String(voice || "").toLowerCase();
+
+  if (
+    value.includes("nilar") ||
+    value.includes("female") ||
+    value.includes("မ")
+  ) {
+    return "my-MM-NilarNeural";
+  }
+
+  return "my-MM-ThihaNeural";
+}
+
+async function startHFJob(text, voiceName) {
+  const url = `${HF_SPACE_URL}/gradio_api/call/predict`;
+
+  // First attempt: text + voice
+  let res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        data: [text, voiceName]
+      })
+    },
+    TIMEOUTS.hfTTS
+  );
+
+  if (res.ok) {
+    const data = await res.json().catch(() => null);
+
+    if (data?.event_id) {
+      return data.event_id;
+    }
+
+    // Some Gradio versions may return an immediate result.
+    if (data?.data) {
+      return {
+        immediate: data.data
+      };
+    }
+  }
+
+  // Second attempt: text only.
+  res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        data: [text]
+      })
+    },
+    TIMEOUTS.hfTTS
+  );
+
+  if (!res.ok) {
+    const errorText = await res.text().catch(() => "");
+    throw new Error(
+      `HF TTS POST failed (${res.status}) ${errorText.slice(0, 300)}`
+    );
+  }
+
+  const data = await res.json().catch(() => null);
+
+  if (data?.event_id) {
+    return data.event_id;
+  }
+
+  if (data?.data) {
+    return {
+      immediate: data.data
+    };
+  }
+
+  throw new Error("HF TTS did not return event_id");
+}
+
+
+function extractGradioAudio(value) {
+  if (!value) return null;
+
+  // String URL / path
+  if (typeof value === "string") {
+    if (
+      value.startsWith("http://") ||
+      value.startsWith("https://")
+    ) {
+      return value;
+    }
+
+    // Gradio sometimes returns an object encoded as JSON.
+    try {
+      const parsed = JSON.parse(value);
+
+      if (parsed) {
+        return extractGradioAudio(parsed);
+      }
+    } catch (_) {}
+
+    return value;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = extractGradioAudio(item);
+      if (found) return found;
+    }
+
+    return null;
+  }
+
+  if (typeof value === "object") {
+    const candidates = [
+      value.url,
+      value.path,
+      value.name,
+      value.file,
+      value.data
+    ];
+
+    for (const candidate of candidates) {
+      const found = extractGradioAudio(candidate);
+      if (found) return found;
+    }
+  }
+
+  return null;
+}
+
+
+async function waitForHFResult(eventId) {
+  if (eventId && typeof eventId === "object") {
+    return eventId.immediate || eventId;
+  }
+
+  const url =
+    `${HF_SPACE_URL}/gradio_api/call/predict/${encodeURIComponent(eventId)}`;
+
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "GET",
+      headers: {
+        Accept: "text/event-stream"
+      }
+    },
+    30000
+  );
+
+  if (!res.ok) {
+    throw new Error(`HF TTS stream HTTP ${res.status}`);
+  }
+
+  const streamText = await res.text();
+
+  const lines = streamText.split(/\r?\n/);
+
+  for (const line of lines) {
+    if (!line.startsWith("data:")) continue;
+
+    const raw = line.slice(5).trim();
+
+    if (!raw || raw === "[DONE]") continue;
+
+    try {
+      const parsed = JSON.parse(raw);
+
+      // Gradio error event.
+      if (
+        parsed &&
+        typeof parsed === "object" &&
+        parsed.error
+      ) {
+        throw new Error(String(parsed.error));
+      }
+
+      const audio = extractGradioAudio(parsed);
+
+      if (audio) {
+        return audio;
+      }
+    } catch (err) {
+      if (
+        err.message &&
+        !String(err.message).includes("Unexpected token")
+      ) {
+        throw err;
+      }
+    }
+  }
+
+  throw new Error("HF TTS returned no audio result");
+}
+
+
+async function resolveHFFileToBase64(audioValue) {
+  if (!audioValue) {
+    throw new Error("HF TTS audio result is empty");
+  }
+
+  // Base64 data URL
+  if (
+    typeof audioValue === "string" &&
+    audioValue.startsWith("data:audio/")
+  ) {
+    return audioValue.split(",")[1] || "";
+  }
+
+  // Direct URL.
+  if (
+    typeof audioValue === "string" &&
+    /^https?:\/\//i.test(audioValue)
+  ) {
+    const res = await fetchWithTimeout(
+      audioValue,
+      {},
+      TIMEOUTS.hfTTS
+    );
+
+    if (!res.ok) {
+      throw new Error(`HF audio download HTTP ${res.status}`);
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    if (!buffer.length) {
+      throw new Error("HF audio file is empty");
+    }
+
+    return buffer.toString("base64");
+  }
+
+  // Local Gradio file path.
+  if (
+    typeof audioValue === "string" &&
+    (
+      audioValue.startsWith("/file=") ||
+      audioValue.startsWith("/tmp/") ||
+      audioValue.includes("/gradio/")
+    )
+  ) {
+    const encodedPath = audioValue.replace(/^\/+/, "");
+
+    const url =
+      `${HF_SPACE_URL}/file=${encodeURIComponent(encodedPath)}`;
+
+    const res = await fetchWithTimeout(
+      url,
+      {},
+      TIMEOUTS.hfTTS
+    );
+
+    if (!res.ok) {
+      throw new Error(`HF file download HTTP ${res.status}`);
+    }
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+
+    return buffer.toString("base64");
+  }
+
+  // If result is already a plain base64-like string.
+  if (
+    typeof audioValue === "string" &&
+    /^[A-Za-z0-9+/=\r\n]+$/.test(audioValue) &&
+    audioValue.length > 100
+  ) {
+    return audioValue.replace(/\s+/g, "");
+  }
+
+  throw new Error("Unsupported HF audio result format");
+}
+
+
+async function fetchEdgeTTS(text, voice = "edge-thiha") {
+  const voiceName = getEdgeVoiceName(voice);
+
+  const chunks = splitTextForTTS(text, 180);
+
+  if (!chunks.length) {
+    throw new Error("Edge TTS: Empty text");
+  }
+
+  /*
+   * We process chunks sequentially.
+   *
+   * This avoids:
+   * - flooding the HF Space
+   * - event ordering problems
+   * - too many simultaneous Gradio jobs
+   */
+  const audioBuffers = [];
+
+  for (const chunk of chunks) {
+    const job = await startHFJob(chunk, voiceName);
+
+    const result = await waitForHFResult(job);
+
+    const base64 = await resolveHFFileToBase64(result);
+
+    if (!base64) {
+      throw new Error("Edge TTS returned empty audio");
+    }
+
+    audioBuffers.push(Buffer.from(base64, "base64"));
+
+    if (chunks.length > 1) {
+      await sleep(100);
+    }
+  }
+
+  return Buffer.concat(audioBuffers).toString("base64");
+}
+
+
+// ============================================================
+// TTS ROUTER
+// ============================================================
+
+async function fetchAudioSafe(text, voice) {
+  const script = validateScript(text);
+
+  const requestedVoice = String(voice || "edge-thiha");
+
+  const errors = [];
+
+  /*
+   * Female voice
+   */
+  if (
+    requestedVoice === "google-my-female" ||
+    requestedVoice.toLowerCase().includes("nilar") ||
+    requestedVoice.includes("female")
+  ) {
+    try {
+      const audio = await fetchEdgeTTS(
+        script,
+        "edge-nilar"
+      );
+
+      return {
+        audioBase64: audio,
+        provider: "Edge-TTS",
+        voice: "my-MM-NilarNeural"
+      };
+    } catch (err) {
+      errors.push(`Edge Nilar: ${err.message}`);
+    }
+
+    try {
+      const audio = await fetchGoogleTTS(script);
+
+      return {
+        audioBase64: audio,
+        provider: "Google TTS",
+        voice: "my-Female"
+      };
+    } catch (err) {
+      errors.push(`Google TTS: ${err.message}`);
+    }
+  }
+
+  /*
+   * Male / default voice
+   */
+  else {
+    try {
+      const audio = await fetchEdgeTTS(
+        script,
+        "edge-thiha"
+      );
+
+      return {
+        audioBase64: audio,
+        provider: "Edge-TTS",
+        voice: "my-MM-ThihaNeural"
+      };
+    } catch (err) {
+      errors.push(`Edge Thiha: ${err.message}`);
+    }
+
+    try {
+      const audio = await fetchGoogleTTS(script);
+
+      return {
+        audioBase64: audio,
+        provider: "Google TTS",
+        voice: "my-Myanmar"
+      };
+    } catch (err) {
+      errors.push(`Google TTS: ${err.message}`);
+    }
+  }
+
+  throw new Error(
+    `TTS ဝန်ဆောင်မှု မအောင်မြင်ပါ။ ${errors.join(" | ")}`
+  );
+}
+
+
+// ============================================================
+// GEMINI
+// ============================================================
+
+async function callDirectGemini(
+  apiKey,
+  model,
+  prompt,
+  options = {}
+) {
+  if (!apiKey) {
+    throw new Error("Gemini API key မရှိပါ");
+  }
+
+  const url =
+    `https://generativelanguage.googleapis.com/v1beta/models/` +
+    `${encodeURIComponent(model)}:generateContent?key=` +
+    encodeURIComponent(apiKey);
+
+  const body = {
+    contents: [
+      {
+        role: "user",
+        parts: [
+          {
+            text: prompt
+          }
+        ]
+      }
+    ],
+    generationConfig: {
+      temperature:
+        typeof options.temperature === "number"
+          ? options.temperature
+          : 0.7,
+
+      maxOutputTokens:
+        Number(options.maxOutputTokens) || 4000
+    }
+  };
+
+  const res = await fetchWithTimeout(
+    url,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body)
+    },
+    options.timeout || TIMEOUTS.gemini
+  );
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const message =
+      data?.error?.message ||
+      `Gemini HTTP ${res.status}`;
+
+    const error = new Error(message);
+    error.status = res.status;
+    error.provider = "Gemini";
+    error.model = model;
+
+    throw error;
+  }
+
+  const parts =
+    data?.candidates?.[0]?.content?.parts || [];
+
+  const result = parts
+    .map((part) => part?.text || "")
+    .join("")
+    .trim();
+
+  if (!result) {
+    throw new Error(
+      `Gemini ${model}: Empty response`
+    );
+  }
+
+  return result;
+}
+
+
+// ============================================================
+// GROQ
+// ============================================================
+
+async function callDirectGroq(apiKey, prompt) {
+  if (!apiKey) {
+    throw new Error("Groq API key မရှိပါ");
+  }
+
+  const res = await fetchWithTimeout(
+    "https://api.groq.com/openai/v1/chat/completions",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        temperature: 0.7,
+        max_tokens: 4000
+      })
+    },
+    TIMEOUTS.groq
+  );
+
+  const data = await res.json().catch(() => ({}));
+
+  if (!res.ok) {
+    const message =
+      data?.error?.message ||
+      `Groq HTTP ${res.status}`;
+
+    const error = new Error(message);
+    error.status = res.status;
+    error.provider = "Groq";
+
+    throw error;
+  }
+
+  const result =
+    data?.choices?.[0]?.message?.content?.trim();
+
+  if (!result) {
+    throw new Error("Groq returned empty response");
+  }
+
+  return result;
+}
+
+
+// ============================================================
+// POLLINATIONS FALLBACK
+// ============================================================
+
+async function callPollinations(prompt) {
+  const res = await fetchWithTimeout(
+    "https://text.pollinations.ai/",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        messages: [
+          {
+            role: "user",
+            content: prompt
+          }
+        ]
+      })
+    },
+    TIMEOUTS.pollinations
+  );
+
+  if (!res.ok) {
+    throw new Error(
+      `Pollinations HTTP ${res.status}`
+    );
+  }
+
+  const result = await res.text();
+
+  if (!result.trim()) {
+    throw new Error("Pollinations returned empty response");
+  }
+
+  return result.trim();
+}
+
+
+// ============================================================
+// AI ROUTER
+// ============================================================
+
+async function runFastAI(prompt, options = {}) {
+  const errors = [];
+
+  const geminiKey =
+    getEnv("GEMINI_API_KEY") ||
+    getEnv("GOOGLE_API_KEY");
+
+  const groqKey =
+    getEnv("GROQ_API_KEY");
+
+  /*
+   * Gemini
+   */
+  if (geminiKey) {
+    for (const model of GEMINI_MODELS) {
+      try {
+        const result = await callDirectGemini(
+          geminiKey,
+          model,
+          prompt,
+          {
+            temperature:
+              options.temperature ?? 0.7,
+
+            maxOutputTokens:
+              options.maxOutputTokens ?? 4000
+          }
+        );
+
+        return {
+          text: result,
+          modelUsed: `Gemini (${model})`,
+          provider: "Gemini"
+        };
+      } catch (err) {
+        errors.push(
+          `Gemini ${model}: ${err.message}`
+        );
+      }
+    }
+  }
+
+  /*
+   * Groq
+   */
+  if (groqKey) {
+    try {
+      const result = await callDirectGroq(
+        groqKey,
+        prompt
+      );
+
+      return {
+        text: result,
+        modelUsed: `Groq (${GROQ_MODEL})`,
+        provider: "Groq"
+      };
+    } catch (err) {
+      errors.push(`Groq: ${err.message}`);
+    }
+  }
+
+  /*
+   * Pollinations
+   */
+  try {
+    const result = await callPollinations(prompt);
+
+    return {
+      text: result,
+      modelUsed: "Pollinations AI",
+      provider: "Pollinations"
+    };
+  } catch (err) {
+    errors.push(
+      `Pollinations: ${err.message}`
+    );
+  }
+
+  throw new Error(
+    "AI မော်ဒယ် ချိတ်ဆက်မှု မအောင်မြင်ပါ။ " +
+    errors.join(" | ")
+  );
+}
+
+
+// ============================================================
+// SCENE EXTRACTION
+// ============================================================
+
+function buildScenePrompt(
+  scriptText,
+  count
+) {
+  const safeCount = clamp(
+    parseInt(count, 10) || 4,
+    1,
+    LIMITS.maxPhotoCount
+  );
+
+  /*
+   * Do not send only first 400 characters.
+   *
+   * Large scripts are divided into logical sections.
+   */
+  const script = normalizeText(scriptText);
+
+  const paragraphs = script
+    .split(/\n{2,}|(?<=။)\s+/)
+    .map((x) => x.trim())
+    .filter(Boolean);
+
+  let selected = paragraphs;
+
+  if (selected.length < safeCount) {
+    const approxSize =
+      Math.ceil(script.length / safeCount);
+
+    selected = [];
+
+    for (let i = 0; i < safeCount; i++) {
+      const start = i * approxSize;
+
+      selected.push(
+        script.slice(
+          start,
+          start + approxSize
+        )
+      );
+    }
+  }
+
+  /*
+   * Limit total request size but preserve beginning,
+   * middle and ending sections.
+   */
+  const maxInput = 24000;
+
+  if (script.length > maxInput) {
+    const part = Math.floor(maxInput / 3);
+
+    selected = [
+      script.slice(0, part),
+      script.slice(
+        Math.floor(script.length / 2) - part / 2,
+        Math.floor(script.length / 2) + part / 2
+      ),
+      script.slice(-part)
+    ];
+  }
+
+  return {
+    count: safeCount,
+    source: selected.join("\n\n")
+  };
+}
+
+
+// ============================================================
+// IMAGE PROMPT GENERATOR
+// ============================================================
+
+async function generateScenePrompts(
+  scriptText,
+  photoCount
+) {
+  const { count, source } =
+    buildScenePrompt(
+      scriptText,
+      photoCount
+    );
+
+  const prompt = `
+You are a professional cinematic storyboard and image-prompt writer.
+
+Read the Burmese story below.
+
+Create exactly ${count} DIFFERENT cinematic scenes that cover the story from beginning to end.
+
+IMPORTANT:
+- Output exactly ${count} lines.
+- English only.
+- One complete image-generation prompt per line.
+- Do not number the lines.
+- Do not use bullet points.
+- Do not write explanations.
+- Do not write "Scene 1", "Scene 2", etc.
+- Keep the same main characters visually consistent.
+- Preserve age, gender, clothing, hairstyle and important objects when the story provides them.
+- Each scene must represent a different moment from the story.
+- Do not invent unrelated events.
+- Use cinematic composition, environment, lighting, camera angle, atmosphere and realistic details.
+- Avoid text, logos and watermarks in the image.
+- Photorealistic cinematic movie still.
+- 16:9 composition.
+
+STORY:
+${source}
+`.trim();
+
+  const aiRes = await runFastAI(
+    prompt,
+    {
+      temperature: 0.55,
+      maxOutputTokens: 5000
+    }
+  );
+
+  const rawLines = cleanAIFormatting(
+    aiRes.text
+  )
+    .split("\n")
+    .map((line) =>
+      line
+        .replace(
+          /^\s*(?:[-*•]+|\d+[.)])\s*/,
+          ""
+        )
+        .replace(
+          /^scene\s*\d+\s*[:.)\-–—]\s*/i,
+          ""
+        )
+        .trim()
+    )
+    .filter(
+      (line) =>
+        line.length > 20 &&
+        countLatin(line) > 10
+    );
+
+  const prompts = [];
+
+  for (let i = 0; i < count; i++) {
+    prompts.push(
+      rawLines[i] ||
+        `Cinematic photorealistic movie scene ${i + 1}, natural environment, realistic characters, dramatic cinematic lighting, detailed composition, realistic film still, 16:9, no text, no watermark`
+    );
+  }
+
+  return {
+    prompts,
+    modelUsed: aiRes.modelUsed
+  };
+}
+
+
+// ============================================================
+// MOVIE SCRIPT
+// ============================================================
+
+async function generateMovieStory({
+  topic,
+  genre,
+  durationMinutes
+}) {
+  const selectedMins = clamp(
+    parseInt(durationMinutes, 10) || 1,
+    1,
+    LIMITS.maxDurationMinutes
+  );
+
+  /*
+   * Burmese narration is better controlled by characters
+   * than English-style "word count".
+   */
+  const targetChars =
+    selectedMins * 700;
+
+  const prompt = `
+ရေးသားသူသည် မြန်မာဘာသာ ဇာတ်လမ်း narration ရေးသားသူတစ်ဦးဖြစ်သည်။
+
+ခေါင်းစဉ်:
+${topic}
+
+အမျိုးအစား:
+${genre || "ဇာတ်လမ်း"}
+
+အရှည်:
+ခန့်မှန်းအားဖြင့် ${selectedMins} မိနစ်စာ narration ဖြစ်အောင်
+မြန်မာစာ ${targetChars} characters ဝန်းကျင် ရေးပါ။
+
+လိုက်နာရန်:
+- သဘာဝကျသော မြန်မာဘာသာဖြင့် ရေးပါ။
+- ဇာတ်လမ်းအစ၊ အလယ်၊ အဆုံး ရှိရမည်။
+- Narration အတွက် နားထောင်လို့ကောင်းသော စာကြောင်းများသုံးပါ။
+- စကားပြောခန်းများပါလျှင် သဘာဝကျအောင်ရေးပါ။
+- ဇာတ်ကောင်များ၏ လုပ်ဆောင်ချက်နှင့် ခံစားချက်ကို ရှင်းလင်းစွာဖော်ပြပါ။
+- အကြောင်းအရာမဆက်စပ်သော scene များ မထည့်ပါနှင့်။
+- English စာကြောင်းများ မထည့်ပါနှင့်။
+- Markdown မသုံးပါနှင့်။
+- Bullet မသုံးပါနှင့်။
+- Planning notes မထည့်ပါနှင့်။
+- ခေါင်းစဉ်မထည့်ပါနှင့်။
+- နံပါတ်စဉ် မထည့်ပါနှင့်။
+
+Output သည် ဇာတ်လမ်း narration တစ်ခုတည်းသာ ဖြစ်ရမည်။
+`.trim();
+
+  const aiRes = await runFastAI(
+    prompt,
+    {
+      temperature: 0.82,
+      maxOutputTokens: Math.min(
+        12000,
+        Math.max(3000, selectedMins * 1200)
+      )
+    }
+  );
+
+  const story =
+    filterStrictBurmeseStory(aiRes.text);
+
+  if (!story || countBurmese(story) < 20) {
+    throw new Error(
+      "AI က မှန်ကန်သော မြန်မာဇာတ်လမ်း မထုတ်ပေးနိုင်ပါ"
+    );
+  }
+
+  return {
+    format: "movie",
+    title: topic,
+    story_text: story,
+    model_used: aiRes.modelUsed
+  };
+}
+
+
+// ============================================================
+// SERIES SCRIPT
+// ============================================================
+
+async function generateSeriesStory({
+  topic,
+  genre,
+  durationMinutes
+}) {
+  const selectedMins = clamp(
+    parseInt(durationMinutes, 10) || 1,
+    1,
+    LIMITS.maxDurationMinutes
+  );
+
+  /*
+   * Total length is distributed across six episodes.
+   */
+  const charsPerEpisode =
+    selectedMins * 650;
+
+  const prompt = `
+မြန်မာဘာသာဖြင့် ဆက်စပ်နေသော ဇာတ်လမ်းတွဲ ၆ ပိုင်း ရေးပါ။
+
+ခေါင်းစဉ်:
+${topic}
+
+အမျိုးအစား:
+${genre || "ဇာတ်လမ်း"}
+
+Episode တစ်ပိုင်းစီ:
+ခန့်မှန်း ${charsPerEpisode} characters ဝန်းကျင်။
+
+အရေးကြီး:
+- အပိုင်း ၆ ပိုင်းလုံးသည် ဇာတ်လမ်းတစ်ခုတည်းအဖြစ် ဆက်စပ်နေရမည်။
+- ဇာတ်ကောင်များ မပြောင်းလဲစေရ။
+- အပိုင်းတစ်ပိုင်းအဆုံးတွင် နောက်အပိုင်းကို ဆက်လက်နားထောင်ချင်စေသော အခြေအနေတစ်ခု ရှိနိုင်သည်။
+- အပိုင်း ၆ တွင် ဇာတ်လမ်းကို သင့်တော်စွာ အဆုံးသတ်ပါ။
+- Pure Burmese narration ဖြစ်ရမည်။
+- English မရေးပါနှင့်။
+- Markdown မရေးပါနှင့်။
+- Bullet မရေးပါနှင့်။
+- Planning notes မရေးပါနှင့်။
+
+အပိုင်းများကို အောက်ပါ marker များဖြင့်သာ ခွဲပါ။
+
+=== အပိုင်း ၁ ===
+ဇာတ်လမ်း
+
+=== အပိုင်း ၂ ===
+ဇာတ်လမ်း
+
+=== အပိုင်း ၃ ===
+ဇာတ်လမ်း
+
+=== အပိုင်း ၄ ===
+ဇာတ်လမ်း
+
+=== အပိုင်း ၅ ===
+ဇာတ်လမ်း
+
+=== အပိုင်း ၆ ===
+ဇာတ်လမ်း
+`.trim();
+
+  const aiRes = await runFastAI(
+    prompt,
+    {
+      temperature: 0.82,
+      maxOutputTokens: 20000
+    }
+  );
+
+  const cleaned = cleanAIFormatting(
+    aiRes.text
+  );
+
+  /*
+   * Flexible parser:
+   * Supports Burmese and English "Episode" labels.
+   */
+  const markerRegex =
+    /===\s*(?:အပိုင်း|episode)\s*[၀-၉0-9]+\s*===/gi;
+
+  const parts = cleaned.split(markerRegex);
+
+  const episodes = [];
+
+  for (let i = 0; i < 6; i++) {
+    const rawEpisode = parts[i + 1] || "";
+
+    const text =
+      filterStrictBurmeseStory(
+        rawEpisode
+      );
+
+    episodes.push({
+      ep: i + 1,
+      title: `အပိုင်း ${i + 1}`,
+      text:
+        text ||
+        `${topic} အကြောင်း ဆက်လက်ဖြစ်ပွားနေသော ဇာတ်လမ်းအပိုင်း။`
+    });
+  }
+
+  return {
+    format: "series",
+    title: topic,
+    episodes,
+    model_used: aiRes.modelUsed
+  };
+}
+
+
+// ============================================================
+// REQUEST BODY
+// ============================================================
+
+function getBody(req) {
+  if (!req.body) return {};
+
+  if (typeof req.body === "object") {
+    return req.body;
+  }
+
+  try {
+    return JSON.parse(req.body);
+  } catch (_) {
+    throw new Error("Invalid JSON request body");
+  }
+}
+
+
+// ============================================================
+// MAIN HANDLER
+// ============================================================
+
+module.exports = async function handler(req, res) {
+  /*
+   * CORS
+   */
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    process.env.ALLOWED_ORIGIN || "*"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Methods",
+    "POST, OPTIONS"
+  );
+
+  res.setHeader(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization"
+  );
+
+  res.setHeader(
+    "Cache-Control",
+    "no-store"
+  );
+
+  /*
+   * Preflight
+   */
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  /*
+   * Only POST
+   */
+  if (req.method !== "POST") {
+    return res.status(405).json({
+      error: "Method Not Allowed",
+      allowed: ["POST"]
+    });
+  }
+
+  const requestId =
+    `${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+
+  try {
+    const body = getBody(req);
+
+    const {
+      action,
+      topic,
+      genre,
+      format,
+      durationMinutes,
+      scriptText,
+      voice,
+      photoCount
+    } = body;
+
+    /*
+     * ========================================================
+     * ACTION: GENERATE AUDIO
+     * ========================================================
+     */
+    if (action === "generate_audio") {
+      const script = validateScript(
+        scriptText
+      );
+
+      const result =
+        await fetchAudioSafe(
+          script,
+          voice
+        );
+
       return res.status(200).json({
-        prompts_text: promptsList.join("\n\n"),
-        prompts_array: promptsList,
-        model_used: aiRes.modelUsed
+        success: true,
+        action: "generate_audio",
+        audioBase64: result.audioBase64,
+        mime_type: "audio/mpeg",
+        model_used: result.provider,
+        voice_used: result.voice,
+        request_id: requestId
       });
     }
 
-    if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
-    const selectedMins = parseInt(durationMinutes) || 1;
-    const words = selectedMins * 105;
+    /*
+     * ========================================================
+     * ACTION: TRANSLATE TO IMAGE PROMPTS
+     * ========================================================
+     */
+    if (action === "translate_to_prompts") {
+      const script = validateScript(
+        scriptText
+      );
 
-    if (format === "series") {
-      const prompt = `Write a continuous 6-episode Burmese storytelling script about "${topic}" (${genre}).
-Each episode around ${words} words. Output ONLY pure Burmese story text. Under NO circumstances output numbers (1, 2, 3) or English notes.
-Separate episodes strictly with:
-=== အပိုင်း ၁ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၂ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၃ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၄ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၅ ===
-[ဇာတ်လမ်းစာသား]
-=== အပိုင်း ၆ ===
-[ဇာတ်လမ်းစာသား]`;
+      const count = clamp(
+        parseInt(photoCount, 10) || 4,
+        1,
+        LIMITS.maxPhotoCount
+      );
 
-      const aiRes = await runFastAI(prompt);
-      const parts = aiRes.text.split(/=== အပိုင်း\s*\d+\s*===/);
+      const result =
+        await generateScenePrompts(
+          script,
+          count
+        );
 
-      const episodes = [];
-      for (let i = 1; i <= 6; i++) {
-        const epContent = filterStrictBurmeseStory(parts[i] || parts[i - 1] || "");
-        episodes.push({
-          ep: i,
-          title: `အပိုင်း ${i}`,
-          text: epContent || `${topic} အပိုင်း ${i} ဇာတ်လမ်းစာသား`
+      return res.status(200).json({
+        success: true,
+        action: "translate_to_prompts",
+        prompts_text:
+          result.prompts.join("\n\n"),
+        prompts_array:
+          result.prompts,
+        count,
+        model_used:
+          result.modelUsed,
+        request_id: requestId
+      });
+    }
+
+
+    /*
+     * ========================================================
+     * ACTION: GENERATE SCRIPT
+     * ========================================================
+     */
+    if (
+      action === "generate_script" ||
+      action === "generate_story" ||
+      !action
+    ) {
+      /*
+       * Topic required only for AI generation.
+       *
+       * Manual script generation should use
+       * generate_audio / translate_to_prompts.
+       */
+      if (!isNonEmptyString(topic)) {
+        return res.status(400).json({
+          error: "ခေါင်းစဉ် မပါဝင်ပါ",
+          request_id: requestId
         });
       }
 
+      const cleanTopic =
+        topic.trim().slice(
+          0,
+          LIMITS.maxTopicLength
+        );
+
+      const cleanGenre =
+        isNonEmptyString(genre)
+          ? genre
+              .trim()
+              .slice(0, LIMITS.maxGenreLength)
+          : "ဇာတ်လမ်း";
+
+      const selectedFormat =
+        format === "series"
+          ? "series"
+          : "movie";
+
+      /*
+       * SERIES
+       */
+      if (selectedFormat === "series") {
+        const result =
+          await generateSeriesStory({
+            topic: cleanTopic,
+            genre: cleanGenre,
+            durationMinutes
+          });
+
+        return res.status(200).json({
+          success: true,
+          ...result,
+          request_id: requestId
+        });
+      }
+
+      /*
+       * MOVIE
+       */
+      const result =
+        await generateMovieStory({
+          topic: cleanTopic,
+          genre: cleanGenre,
+          durationMinutes
+        });
+
       return res.status(200).json({
-        format: "series",
-        title: topic,
-        episodes: episodes,
-        model_used: aiRes.modelUsed
-      });
-
-    } else {
-      const prompt = `Write a complete movie story narration in 100% pure Burmese script about "${topic}" (${genre}).
-Length: approximately ${words} Burmese words.
-Rules:
-- Output ONLY the Burmese narrative prose.
-- Absolutely NO numbers (1, 2, 3), NO English words, NO planning notes.`;
-
-      const aiRes = await runFastAI(prompt);
-      const cleanStory = filterStrictBurmeseStory(aiRes.text);
-
-      return res.status(200).json({
-        format: "movie",
-        title: topic,
-        story_text: cleanStory,
-        model_used: aiRes.modelUsed
+        success: true,
+        ...result,
+        request_id: requestId
       });
     }
 
+
+    /*
+     * ========================================================
+     * UNKNOWN ACTION
+     * ========================================================
+     */
+    return res.status(400).json({
+      error: "Unknown action",
+      supported_actions: [
+        "generate_script",
+        "generate_story",
+        "generate_audio",
+        "translate_to_prompts"
+      ],
+      request_id: requestId
+    });
+
   } catch (err) {
-    console.error("Story API Error:", err);
-    return res.status(500).json({ error: err.message || "ဇာတ်လမ်းစာသား ထုတ်ယူမှု မအောင်မြင်ပါ" });
+    /*
+     * NEVER expose API keys.
+     *
+     * Log detailed error server-side only.
+     */
+    console.error(
+      `[Story API Error ${requestId}]`,
+      {
+        message: err?.message,
+        provider: err?.provider,
+        model: err?.model,
+        status: err?.status,
+        ip: getClientIP(req)
+      }
+    );
+
+    const status =
+      err?.status === 400 ||
+      err?.status === 401 ||
+      err?.status === 403 ||
+      err?.status === 404 ||
+      err?.status === 429
+        ? err.status
+        : 500;
+
+    return res.status(status).json({
+      success: false,
+      error:
+        err?.message ||
+        "ဇာတ်လမ်းလုပ်ဆောင်မှု မအောင်မြင်ပါ",
+      request_id: requestId
+    });
   }
 };
