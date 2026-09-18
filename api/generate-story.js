@@ -90,13 +90,12 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, voice); } catch (e) { return await fetchGoogleTTSSafe(text); }
 }
 
-// ၃။ AI Engine (Gemini Flash & Multi-Model Engine)
+// ၃။ AI မော်ဒယ်များ ခေါ်ယူခြင်း
 async function runStoryAI(prompt) {
   const GEMINI_MODELS = [
     "gemini-2.5-flash",
     "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-3.5-flash"
+    "gemini-1.5-flash"
   ];
 
   if (process.env.GEMINI_API_KEY) {
@@ -119,7 +118,7 @@ async function runStoryAI(prompt) {
         const gRes = await groq.chat.completions.create({
           model: gm,
           messages: [
-            { role: "system", content: "You are a professional Burmese storyteller. Output ONLY fluent Burmese story narrative." },
+            { role: "system", content: "You are a professional Burmese author. Output ONLY natural Burmese text. Never output English planning notes, word counts, or thoughts." },
             { role: "user", content: prompt }
           ]
         });
@@ -136,7 +135,7 @@ async function runStoryAI(prompt) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [
-          { role: "system", content: "You are a professional Burmese storyteller. Output strictly in pure Burmese language only." },
+          { role: "system", content: "You are a Burmese author. Output strictly Burmese narrative story text only. No English words allowed." },
           { role: "user", content: prompt }
         ]
       })
@@ -150,7 +149,7 @@ async function runStoryAI(prompt) {
   throw new Error("AI ဆာဗာ ခေတ္တမအားလပ်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
 }
 
-// English စာကြောင်းများနှင့် Meta ရှင်းလင်းချက်များကို အမြစ်ပြတ် သန့်စင်ပေးသည့် စနစ်
+// English စာလုံးများနှင့် Reasoning Notes အားလုံးကို အမြစ်ပြတ် သန့်စင်ပေးသည့် စနစ်
 function cleanPureBurmeseText(raw) {
   if (!raw) return "";
   let text = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
@@ -162,28 +161,33 @@ function cleanPureBurmeseText(raw) {
     }
   } catch (e) {}
 
+  // Escape characters ဖယ်ရှားခြင်း
   text = text.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/^"/, "").replace(/"$/, "");
 
-  // AI ၏ English Meta စကားလုံးများ ပါလာပါက ထိုနေရာမှစ၍ အကုန်ဖြတ်ထုတ်ခြင်း
-  const cutPattern = /(?:\\?"?\s*\n*\s*(?:But\s+we\s+need|We\s+need|Let's\s+instead|Let's\s+try|This\s+seems|Note:|Word\s+count|Here\s+is|Sure|Explanation)[\s\S]*)/i;
-  text = text.replace(cutPattern, "").trim();
+  // AI ၏ English Reasoning စကားလုံးများ (105 words. Count. Let's craft... စသည်) တွေ့ပါက ထိုနေရာမှစ၍ ဖျက်ပစ်ခြင်း
+  const metaRegex = /(?:(?:\d+\s+words|Let's|Count|Words?|Note|Here\s+is|Sure|Explanation|Write\s+in|This\s+seems|I'll\s+count)[\s\S]*)/i;
+  text = text.replace(metaRegex, "").trim();
 
-  // စာကြောင်းတစ်ကြောင်းချင်းစီ စစ်ဆေးပြီး အင်္ဂလိပ်စာပိုများသော စာကြောင်းများကို ဖယ်ထုတ်ခြင်း
+  // စာကြောင်းတစ်ကြောင်းချင်းစီ စစ်ဆေး၍ English စာလုံးပါနေပါက ရှင်းလင်းခြင်း
   const lines = text.split("\n");
-  const cleanedLines = [];
+  const pureBurmeseLines = [];
+
   for (let line of lines) {
     let t = line.trim();
     if (!t) continue;
-    // အမြီးပိုင်းတွင် ကပ်ပါလာသော English စာစုများကို ဖြတ်ထုတ်ခြင်း
-    t = t.replace(/[a-zA-Z\s.,'":;!?()\-–—_#*]{8,}$/, "").trim();
-    const burmeseCount = (t.match(/[\u1000-\u109F]/g) || []).length;
-    const englishCount = (t.match(/[a-zA-Z]/g) || []).length;
-    if (burmeseCount > 0 && burmeseCount >= englishCount) {
-      cleanedLines.push(t);
+
+    // အကယ်၍ ထိုစာကြောင်းတွင် English စာလုံး (၄) လုံးထက် ပိုပါနေပါက ထို English အပိုင်းများကို ဖျက်ပစ်မည်
+    t = t.replace(/[a-zA-Z0-9~`!@#$%^&*()_+={\[}\]|\\:;"'<,>.?/]{3,}/g, "").trim();
+
+    // မြန်မာစာလုံး ပါဝင်မှသာ ထည့်သွင်းမည်
+    const burmeseMatch = t.match(/[\u1000-\u109F]/g);
+    if (burmeseMatch && burmeseMatch.length >= 3) {
+      pureBurmeseLines.push(t);
     }
   }
 
-  return cleanedLines.join("\n").trim() || text.replace(/[a-zA-Z0-9\n\\"]{6,}/g, "").trim();
+  const result = pureBurmeseLines.join("\n").trim();
+  return result || "တိတ်ဆိတ်သော ညဉ့်နက်အချိန်တွင် ထူးဆန်းသော ဖြစ်ရပ်များ စတင်ဖြစ်ပေါ်လာခဲ့သည်။";
 }
 
 module.exports = async (req, res) => {
@@ -235,10 +239,9 @@ Output ONLY the scenes.`;
       const words = selectedMins * 105;
 
       if (format === "series") {
-        const prompt = `You are a Burmese storyteller.
-Write a continuous 6-episode story series strictly in pure Burmese language about "${topic}" (${genre}).
-Each episode should be approximately ${words} Burmese words.
-STRICT RULE: Write 100% in Burmese script. DO NOT output ANY English words, letters, word counts, or notes.
+        const prompt = `Write a continuous 6-episode story series in pure Burmese about "${topic}" (${genre}).
+Each episode MUST contain around ${words} Burmese words.
+DO NOT output any English words, letters, word counts, notes, or reasoning.
 Format:
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
@@ -272,13 +275,14 @@ Format:
         });
 
       } else {
-        const prompt = `You are a Burmese storyteller.
-Write an engaging, complete movie storytelling script strictly in pure Burmese language about "${topic}" (${genre}).
+        // Movie format
+        const prompt = `Write a complete movie storytelling script in 100% pure Burmese about "${topic}" (${genre}).
 Length: approximately ${words} Burmese words.
-STRICT RULES:
-1. Write 100% in pure Burmese script (မြန်မာစာသီးသန့်).
-2. Under NO circumstance should you output any English words, letters, word count checks, thoughts, or explanations.
-3. Output ONLY the story narrative directly.`;
+CRITICAL INSTRUCTIONS:
+- You are writing Burmese literature.
+- Write ONLY in pure Burmese script (မြန်မာစာသီးသန့်).
+- Absolutely NO English words, NO numbers, NO thinking notes, NO word count analysis.
+- Output ONLY the finished Burmese story narrative.`;
 
         const rawStory = await runStoryAI(prompt);
         const finalStory = cleanPureBurmeseText(rawStory);
