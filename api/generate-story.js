@@ -5,35 +5,25 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-// Google Translate TTS ခေါ်ယူခြင်း (စက်ရုပ်သံမဆန်သော သဘာဝ မြန်မာအသံ)
 async function fetchGoogleTTS(text) {
   const chunks = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const audioBuffers = [];
   for (const chunk of chunks) {
     if (!chunk.trim()) continue;
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk.trim())}&tl=my&client=tw-ob`;
-    const res = await fetch(url, {
-      headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" }
-    });
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
     if (res.ok) {
-      const arrayBuffer = await res.arrayBuffer();
-      audioBuffers.push(Buffer.from(arrayBuffer));
+      const buf = await res.arrayBuffer();
+      audioBuffers.push(Buffer.from(buf));
     }
   }
-  if (audioBuffers.length > 0) {
-    return Buffer.concat(audioBuffers).toString("base64");
-  }
-  throw new Error("Google TTS မှ အသံရယူ၍ မရပါ");
+  if (audioBuffers.length > 0) return Buffer.concat(audioBuffers).toString("base64");
+  throw new Error("Google TTS Failed");
 }
 
-// Edge-TTS (Hugging Face ZeroGPU) ခေါ်ယူခြင်း
 async function fetchBurmeseVoice(text, voice) {
   if (voice && voice.startsWith("google-")) {
-    try {
-      return await fetchGoogleTTS(text);
-    } catch (err) {
-      console.warn("Google TTS fallback to Edge-TTS:", err.message);
-    }
+    try { return await fetchGoogleTTS(text); } catch (e) {}
   }
 
   const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
@@ -42,7 +32,7 @@ async function fetchBurmeseVoice(text, voice) {
     body: JSON.stringify({ data: [text] }),
   });
 
-  if (!postRes.ok) throw new Error("Hugging Face Space ခေါ်ယူမှု မအောင်မြင်ပါ");
+  if (!postRes.ok) throw new Error("HF Space Connect Error");
   const { event_id } = await postRes.json();
 
   const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
@@ -54,114 +44,54 @@ async function fetchBurmeseVoice(text, voice) {
       if (Array.isArray(parsed) && parsed[0]) return parsed[0];
     }
   }
-  throw new Error("အသံဒေတာ ပြန်မရပါ");
+  throw new Error("အသံဒေတာ ရယူ၍မရပါ");
 }
 
-// ၁။ တစ်ပိုင်းတည်းအပြီး Movie ရေးသားခြင်း
-async function generateSingleMovie(topic, genre) {
-  const prompt = `
-You are a master Burmese screenwriter.
-Write an engaging, complete, standalone movie story script in Burmese based on the topic: "${topic}" (Genre: ${genre}).
-Length: 200-250 words.
-Make it deeply cinematic and captivating.
-
-OUTPUT FORMAT: Return strictly valid JSON only:
-{
-  "movie_title": "ရုပ်ရှင် ခေါင်းစဉ်",
-  "story_text": "ရုပ်ရှင် ဇာတ်လမ်း စာသားအပြည့်အစုံ"
-}
-`;
-
-  let responseText = "";
+async function runLLMCompletion(prompt) {
+  // ၁။ Gemini စံ Models များဖြင့် စတင်စမ်းသပ်ခြင်း
+  const geminiModels = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
   if (process.env.GEMINI_API_KEY) {
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
-      });
-      if (response && response.text) responseText = response.text.trim();
-    } catch (err) {
-      console.warn("Gemini Movie failed, using Groq:", err.message);
+    for (const m of geminiModels) {
+      try {
+        const res = await ai.models.generateContent({
+          model: m,
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+        if (res && res.text) return res.text.trim();
+      } catch (e) {
+        console.warn(`Gemini (${m}) failed, trying fallback...`);
+      }
     }
   }
 
-  if (!responseText) {
-    const groqRes = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: "You output strictly valid JSON only." },
-        { role: "user", content: prompt }
-      ],
-      response_format: { type: "json_object" }
-    });
-    responseText = groqRes.choices[0]?.message?.content?.trim();
-  }
-
-  return JSON.parse(responseText);
-}
-
-// ၂။ အခန်းဆက် ၆ ပိုင်း Series ရေးသားခြင်း
-async function generateEpisodicStory(topic, genre) {
-  const prompt = `
-You are a master Burmese series scriptwriter.
-Write an engaging 6-episode continuous story series in Burmese based on the topic: "${topic}" (Genre: ${genre}).
-The story MUST connect logically from Ep 1 to Ep 6:
-- Ep 1: Introduction & Mystery Hook
-- Ep 2: Rising Suspense
-- Ep 3: The Danger Deepens
-- Ep 4: Major Plot Twist
-- Ep 5: Climax Battle/Confrontation
-- Ep 6: Final Resolution & Ending
-
-OUTPUT FORMAT: Return strictly valid JSON only:
-{
-  "series_title": "ခေါင်းစဉ်",
-  "episodes": [
-    { "ep": 1, "title": "အပိုင်း ၁ ခေါင်းစဉ်", "text": "အပိုင်း ၁ ဇာတ်လမ်းစာသား (100-140 words)" },
-    { "ep": 2, "title": "အပိုင်း ၂ ခေါင်းစဉ်", "text": "အပိုင်း ၂ ဇာတ်လမ်းစာသား" },
-    { "ep": 3, "title": "အပိုင်း ၃ ခေါင်းစဉ်", "text": "အပိုင်း ၃ ဇာတ်လမ်းစာသား" },
-    { "ep": 4, "title": "အပိုင်း ၄ ခေါင်းစဉ်", "text": "အပိုင်း ၄ ဇာတ်လမ်းစာသား" },
-    { "ep": 5, "title": "အပိုင်း ၅ ခေါင်းစဉ်", "text": "အပိုင်း ၅ ဇာတ်လမ်းစာသား" },
-    { "ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "အပိုင်း ၆ ဇာတ်လမ်းစာသား" }
-  ]
-}
-`;
-
-  let responseText = "";
-  if (process.env.GEMINI_API_KEY) {
+  // ၂။ Groq အခမဲ့ Models များဖြင့် Fallback ခေါ်ယူခြင်း (404 Error ကင်းစင်စေသော List)
+  const groqModels = ["llama-3.1-8b-instant", "llama-3.3-70b-versatile", "llama3-70b-8192"];
+  for (const gm of groqModels) {
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3.6-flash",
-        contents: prompt,
-        config: { responseMimeType: "application/json" }
+      const gRes = await groq.chat.completions.create({
+        model: gm,
+        messages: [
+          { role: "system", content: "You output strictly valid JSON only." },
+          { role: "user", content: prompt }
+        ],
+        response_format: { type: "json_object" }
       });
-      if (response && response.text) responseText = response.text.trim();
+      const content = gRes.choices[0]?.message?.content?.trim();
+      if (content) return content;
     } catch (err) {
-      console.warn("Gemini Series failed, using Groq:", err.message);
+      console.warn(`Groq (${gm}) failed:`, err.message);
     }
   }
 
-  if (!responseText) {
-    const groqRes = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: "You output strictly valid JSON only." },
-        { role: "user", content: prompt }
-      ],
-      response_format: { type: "json_object" }
-    });
-    responseText = groqRes.choices[0]?.message?.content?.trim();
-  }
-
-  return JSON.parse(responseText);
+  throw new Error("AI Models များအားလုံးမှ တုံ့ပြန်မှု မရရှိပါ");
 }
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { topic, genre, voice, format, fetchAudioOnly, scriptText } = req.body;
+    const { topic, genre, voice, format, durationMinutes, fetchAudioOnly, scriptText } = req.body;
 
     if (fetchAudioOnly && scriptText) {
       const audioBase64 = await fetchBurmeseVoice(scriptText, voice);
@@ -170,24 +100,22 @@ module.exports = async (req, res) => {
 
     if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
+    const wordsPerMinute = 130;
+    const totalWords = (parseInt(durationMinutes) || 2) * wordsPerMinute;
+
     if (format === "movie") {
-      const movieData = await generateSingleMovie(topic, genre || "horror");
-      const audioBase64 = await fetchBurmeseVoice(movieData.story_text, voice);
-      return res.status(200).json({
-        movie_title: movieData.movie_title,
-        story_text: movieData.story_text,
-        audioBase64: audioBase64
-      });
+      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
+      const jsonStr = await runLLMCompletion(prompt);
+      return res.status(200).json(JSON.parse(jsonStr));
     } else {
-      const seriesData = await generateEpisodicStory(topic, genre || "horror");
-      const ep1Audio = await fetchBurmeseVoice(seriesData.episodes[0].text, voice);
-      return res.status(200).json({
-        series: seriesData,
-        initialAudioBase64: ep1Audio
-      });
+      const epWords = Math.round(totalWords / 6);
+      const prompt = `Write a 6-episode continuous story series in Burmese for topic: "${topic}" (${genre}). Each episode must have around ${epWords} words. Output JSON: {"series_title": "ခေါင်းစဉ်", "episodes": [{"ep": 1, "title": "အပိုင်း ၁", "text": "စာသား"}, {"ep": 2, "title": "အပိုင်း ၂", "text": "စာသား"}, {"ep": 3, "title": "အပိုင်း ၃", "text": "စာသား"}, {"ep": 4, "title": "အပိုင်း ၄", "text": "စာသား"}, {"ep": 5, "title": "အပိုင်း ၅", "text": "စာသား"}, {"ep": 6, "title": "အပိုင်း ၆", "text": "စာသား"}]}`;
+      const jsonStr = await runLLMCompletion(prompt);
+      return res.status(200).json({ series: JSON.parse(jsonStr) });
     }
+
   } catch (err) {
     console.error("Story API Error:", err);
-    return res.status(500).json({ error: err.message || "ဇာတ်လမ်းဖန်တီးမှု မအောင်မြင်ပါ" });
+    return res.status(500).json({ error: err.message || "ဇာတ်လမ်း ဖန်တီးမှု မအောင်မြင်ပါ" });
   }
 };
