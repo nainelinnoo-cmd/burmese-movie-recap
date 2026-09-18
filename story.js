@@ -6,8 +6,8 @@ let s_sceneImages = [];
 let s_aspectRatio = "16:9";
 
 // Custom Motion Controls
-let s_motionStyle = "dynamic"; // "dynamic", "zoom-in", "zoom-out", "pan-left", "pan-right"
-let s_clipDurationMode = "auto"; // "auto", "3", "5", "7"
+let s_motionStyle = "dynamic";
+let s_clipDurationMode = "auto";
 
 let s_audioEl = null;
 let s_currentBgm = null;
@@ -77,7 +77,6 @@ function initStoryView() {
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
-      <!-- Global Accurate Progress Loading Bar -->
       <div id="s-global-progress" style="display: none; background: #1e293b; border: 1px solid #0284c7; border-radius: 12px; padding: 12px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
           <span id="s-progress-status-title" style="color: #38bdf8; font-weight: bold;">လုပ်ဆောင်နေပါသည်...</span>
@@ -88,7 +87,6 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1-6 / Movie) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားခြင်း</span>
@@ -127,7 +125,6 @@ function initStoryView() {
           <span>✨ AI ဖြင့် မြန်မာစာသီးသန့် ဇာတ်လမ်းရေးမည်</span>
         </button>
 
-        <!-- Series ဖြစ်ပါက Ep 1 to 6 ခလုတ်များ -->
         <div id="s-ep-buttons-container" style="display: none; flex-direction: column; gap: 6px;">
           <label style="font-size: 0.75rem; color: #facc15; font-weight: bold;">📺 အပိုင်းများ ရွေးချယ်ရန် (Ep 1 to 6)</label>
           <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
@@ -148,7 +145,6 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- ဆိုဒ် ရွေးချယ်ခြင်း: 16:9 / 9:16 / 1:1 -->
       <div class="card" style="background: #131d31; padding: 12px;">
         <label style="font-size: 0.8rem; margin-bottom: 6px; display: block; color: #facc15;">📐 ဗီဒီယို ဆိုဒ် (Aspect Ratio) ရွေးချယ်ပါ</label>
         <div style="display: flex; gap: 8px;">
@@ -158,7 +154,6 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- အဆင့် ၂: Prompt to Photo (ပုံအရေအတွက် နှင့် အသေးစိတ် ရွေးချယ်မှုများ) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo & Motion Settings</span>
@@ -202,7 +197,6 @@ function initStoryView() {
         <div id="s-photo-preview-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
       </div>
 
-      <!-- အဆင့် ၃: Text to Speech -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၃</span> 🎙️ Text to Speech</span>
@@ -229,7 +223,6 @@ function initStoryView() {
         <audio id="s-audio-player" controls style="width: 100%; height: 38px; display: none;"></audio>
       </div>
 
-      <!-- အဆင့် ၄: Motion Video Studio -->
       <div id="s-motion-studio" style="display: none; flex-direction: column; gap: 14px;">
         <div class="card" style="padding: 10px; background: #131d31;">
           <span style="font-weight: bold; color: #facc15; font-size: 0.9rem;"><span class="step-badge">အဆင့် ၄</span> 🎬 Motion Video Studio</span>
@@ -238,18 +231,15 @@ function initStoryView() {
         <div id="s-video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; max-height: 70vh; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
           <canvas id="s-motion-canvas" width="1280" height="720" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
 
-          <!-- Title Overlay -->
           <div id="s-drag-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; text-align: center; white-space: nowrap;">
             ခေါင်းစဉ် စာသား
           </div>
 
-          <!-- Subtitle Overlay with ↘ Resize Handle -->
           <div id="s-drag-subtitle" style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
             <span id="s-sub-text">စာတန်းထိုး ပြသမည့်နေရာ</span>
             <div id="s-sub-resize-handle" style="position: absolute; right: -7px; bottom: -7px; width: 22px; height: 22px; background: #10b981; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
           </div>
 
-          <!-- Watermark Overlay with ↘ Resize Handle -->
           <div id="s-drag-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 70px; height: 70px; cursor: move; z-index: 20; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
             <img id="s-wm-preview-img" src="" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" />
             <div id="s-wm-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
@@ -260,7 +250,6 @@ function initStoryView() {
           <span id="s-play-text">▶ Motion Video စမ်းဖွင့်မည်</span>
         </button>
 
-        <!-- Video Title Controls -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">✏️ Video Title / စာသားထည့်</span>
@@ -272,7 +261,6 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- Watermark Controls -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🖼️ Watermark & တံဆိပ်</span>
           <div style="display: flex; gap: 8px; align-items: center;">
@@ -281,7 +269,6 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- Subtitle (SRT) Settings (၇ မျိုး & ၈ မျိုး ⭕) -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
@@ -332,7 +319,6 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- Audio Mixer (BGM) -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🎚️ Audio Mixer & BGM</span>
           <div>
@@ -344,7 +330,6 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- Final Export Card -->
         <div class="card" style="background: linear-gradient(145deg, #1e1b4b, #0f172a); border: 1px solid #6366f1;">
           <div style="font-size: 0.9rem; font-weight: bold; color: #a5b4fc; margin-bottom: 6px;">🚀 Motion Video အပြီးသတ် Download လုပ်ခြင်း</div>
           <button id="btn-s-export" onclick="exportMotionHardcodedVideo()" class="btn" style="background: linear-gradient(90deg, #6366f1, #10b981); font-weight: bold; font-size: 0.95rem; padding: 14px;">
@@ -364,7 +349,6 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
-// Progress Bar Controller (တိကျသော ရာခိုင်နှုန်း ပြသခြင်း)
 function updateGlobalProgress(title, percent, show = true) {
   const box = document.getElementById("s-global-progress");
   const tEl = document.getElementById("s-progress-status-title");
@@ -406,7 +390,7 @@ function setVideoRatio(ratio, el) {
   renderMotionFrame(0, 60);
 }
 
-// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Progress % အမှန်ပြသခြင်း)
+// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (တိုက်ရိုက် စာသားထည့်သွင်းခြင်း)
 async function handleGenerateStoryScript() {
   const topic = document.getElementById("s-topic-input").value.trim();
   const format = document.getElementById("s-format-select").value;
@@ -419,10 +403,10 @@ async function handleGenerateStoryScript() {
   if (!topic) return alert("ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
 
   btn.disabled = true;
-  updateGlobalProgress("AI မော်ဒယ်များနှင့် ချိတ်ဆက်နေပါသည်...", 15, true);
+  updateGlobalProgress("AI မော်ဒယ်များနှင့် ချိတ်ဆက်နေပါသည်...", 20, true);
 
   try {
-    updateGlobalProgress("Gemini က မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 55, true);
+    updateGlobalProgress("Gemini က မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 60, true);
 
     const res = await fetch("/api/generate-story", {
       method: "POST",
@@ -449,16 +433,17 @@ async function handleGenerateStoryScript() {
       s_seriesData = null;
       epContainer.style.display = "none";
       const storyTitle = data.movie_title || topic;
-      const storyContent = data.story_text || "";
+      const storyContent = data.story_text || data.script || "";
 
       document.getElementById("s-current-label").innerText = `🎬 ${storyTitle} (ရုပ်ရှင်ဇာတ်လမ်းစာသား)`;
+      // စာသားကို တိုက်ရိုက် သေချာပေါက် ထည့်သွင်းပေးခြင်း
       textarea.value = storyContent;
       document.getElementById("s-title-input").value = storyTitle;
       updateSTitleText(storyTitle);
     }
 
     btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
-    setTimeout(() => updateGlobalProgress("", 0, false), 1500);
+    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
@@ -489,7 +474,7 @@ function selectStoryEpisode(epNum) {
   updateSTitleText(ep.title);
 }
 
-// အဆင့် ၂: Prompt to Photo (ဓာတ်ပုံတစ်ပုံချင်းစီ အမှန်တကယ် Download ပြီးစီးမှု % အတိအကျ ပြသခြင်း)
+// အဆင့် ၂: Prompt to Photo (Download ပြီးစီးမှုအလိုက် % တိကျစွာ ပြသခြင်း)
 async function handlePromptToPhoto() {
   const scriptText = document.getElementById("s-script-textarea").value.trim();
   const btn = document.getElementById("btn-prompt-photo");
@@ -499,7 +484,7 @@ async function handlePromptToPhoto() {
   if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ သို့မဟုတ် ရိုက်ထည့်ပေးပါ");
 
   btn.disabled = true;
-  updateGlobalProgress("စာသားမှ မြင်ကွင်း Prompts များကို ခွဲထုတ်နေပါသည်...", 10, true);
+  updateGlobalProgress("စာသားမှ မြင်ကွင်း Prompts များကို ခွဲထုတ်နေပါသည်...", 15, true);
 
   try {
     const res = await fetch("/api/generate-story", {
@@ -536,7 +521,7 @@ async function handlePromptToPhoto() {
         img.onload = () => {
           loadedCount++;
           const realPercent = Math.round(20 + (loadedCount / totalPrompts) * 80);
-          updateGlobalProgress(`AI ဓာတ်ပုံ (${loadedCount}/${totalPrompts}) ရေးဆွဲပြီးစီးပါပြီ...`, realPercent, true);
+          updateGlobalProgress(`AI ဓာတ်ပုံ (${loadedCount}/${totalPrompts}) ဆွဲပြီးစီးပါပြီ...`, realPercent, true);
 
           const previewImg = document.getElementById(`scene-img-${idx}`);
           if (previewImg) previewImg.src = img.src;
@@ -556,7 +541,7 @@ async function handlePromptToPhoto() {
     document.getElementById("s-motion-studio").style.display = "flex";
     renderMotionFrame(0, 60);
 
-    setTimeout(() => updateGlobalProgress("", 0, false), 1500);
+    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
@@ -566,7 +551,7 @@ async function handlePromptToPhoto() {
   }
 }
 
-// အဆင့် ၃: Text to Speech (TTS Progress % ပြသခြင်း)
+// အဆင့် ၃: Text to Speech
 async function handleTextToSpeech() {
   const scriptText = document.getElementById("s-script-textarea").value.trim();
   const voice = document.getElementById("s-voice-select").value;
@@ -606,7 +591,7 @@ async function handleTextToSpeech() {
     btn.innerText = "✅ အသံဖိုင် ရရှိပါပြီ";
     document.getElementById("s-motion-studio").style.display = "flex";
 
-    setTimeout(() => updateGlobalProgress("", 0, false), 1500);
+    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
@@ -616,7 +601,7 @@ async function handleTextToSpeech() {
   }
 }
 
-// Custom Motion Styles & Dynamic Pan/Zoom Rendering
+// 2.5D Motion Pan/Zoom & Custom Styles
 function renderMotionFrame(time, duration) {
   const canvas = document.getElementById("s-motion-canvas");
   if (!canvas) return;
@@ -628,7 +613,6 @@ function renderMotionFrame(time, duration) {
     return;
   }
 
-  // Clip Time Calculation (Auto or 3s, 5s, 7s)
   let segmentDur = (duration || 60) / s_sceneImages.length;
   if (s_clipDurationMode !== "auto") {
     segmentDur = parseFloat(s_clipDurationMode) || 5;
@@ -644,7 +628,6 @@ function renderMotionFrame(time, duration) {
   let panX = 0;
   let panY = 0;
 
-  // Selected Motion Styles
   if (s_motionStyle === "zoom-in") {
     scale = 1.0 + prog * 0.15;
   } else if (s_motionStyle === "zoom-out") {
@@ -656,7 +639,7 @@ function renderMotionFrame(time, duration) {
     scale = 1.08;
     panX = (prog - 0.5) * 50;
   } else {
-    // Dynamic Mix (အခန်းတစ်ခုချင်းစီ အလိုက် မတူညီသော စတိုင်များ ပေါင်းစပ်လှုပ်ရှားခြင်း)
+    // Dynamic
     if (idx % 4 === 0) {
       scale = 1.0 + prog * 0.12;
     } else if (idx % 4 === 1) {
@@ -712,7 +695,7 @@ function toggleMotionPlayback() {
   }
 }
 
-// Overlays Controls (Title, Watermark, Subtitles)
+// Overlays Controls
 function toggleSTitle() {
   s_isTitleActive = !s_isTitleActive;
   const el = document.getElementById("s-drag-title");
@@ -980,173 +963,3 @@ function parseStorySrt(srtText) {
       const timeParts = lines[1].split(" --> ");
       const parseSec = (t) => {
         const [h, m, s] = t.split(":");
-        const [sec, ms] = s.split(",");
-        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
-      };
-      return { start: parseSec(timeParts[0]), end: parseSec(timeParts[1]), text: lines.slice(2).join(" ") };
-    }
-    return null;
-  }).filter(Boolean);
-}
-
-// ၈။ Final Hardcoded Video Export (Render Progress % ပြသခြင်း)
-async function exportMotionHardcodedVideo() {
-  if (!s_audioEl || !s_audioEl.src) return alert("ဗီဒီယိုနှင့် အသံဖိုင် အဆင်သင့် မရှိသေးပါ");
-
-  const exportBtn = document.getElementById("btn-s-export");
-  const wrapper = document.getElementById("s-video-wrapper");
-  const subEl = document.getElementById("s-drag-subtitle");
-  const titleEl = document.getElementById("s-drag-title");
-  const wmEl = document.getElementById("s-drag-watermark");
-
-  exportBtn.disabled = true;
-  updateGlobalProgress("Motion Video ကို Render စတင်ပြုလုပ်နေပါသည်...", 5, true);
-
-  const exportCanvas = document.createElement("canvas");
-  if (s_aspectRatio === "9:16") {
-    exportCanvas.width = 720;
-    exportCanvas.height = 1280;
-  } else if (s_aspectRatio === "1:1") {
-    exportCanvas.width = 720;
-    exportCanvas.height = 720;
-  } else {
-    exportCanvas.width = 1280;
-    exportCanvas.height = 720;
-  }
-  const ctx = exportCanvas.getContext("2d");
-
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const dest = audioCtx.createMediaStreamDestination();
-
-  try {
-    const aSource = audioCtx.createMediaElementSource(s_audioEl);
-    aSource.connect(dest);
-  } catch (e) {}
-
-  try {
-    if (s_currentBgm) {
-      const bSource = audioCtx.createMediaElementSource(s_currentBgm);
-      bSource.connect(dest);
-    }
-  } catch (e) {}
-
-  const canvasStream = exportCanvas.captureStream(30);
-  const combinedStream = new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...dest.stream.getAudioTracks()
-  ]);
-
-  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-    ? "video/webm;codecs=vp9,opus"
-    : "video/webm";
-
-  const recorder = new MediaRecorder(combinedStream, { mimeType });
-  const chunks = [];
-
-  recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
-  recorder.onstop = () => {
-    const blob = new Blob(chunks, { type: "video/webm" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = `Motion_Video_${s_aspectRatio.replace(":", "_")}_${Date.now()}.webm`;
-    a.click();
-
-    updateGlobalProgress("Motion Video Download ရယူပြီးပါပြီ!", 100, true);
-    setTimeout(() => {
-      updateGlobalProgress("", 0, false);
-      exportBtn.disabled = false;
-    }, 2000);
-  };
-
-  s_audioEl.currentTime = 0;
-  if (s_currentBgm) s_currentBgm.currentTime = 0;
-  recorder.start();
-  await s_audioEl.play();
-  if (s_currentBgm) s_currentBgm.play();
-
-  const scaleX = exportCanvas.width / wrapper.clientWidth;
-  const scaleY = exportCanvas.height / wrapper.clientHeight;
-
-  function exportLoop() {
-    if (s_audioEl.paused || s_audioEl.ended) return;
-
-    const curr = s_audioEl.currentTime;
-    const dur = s_audioEl.duration || 60;
-
-    // Render Canvas Frame
-    renderMotionFrame(curr, dur);
-    ctx.drawImage(document.getElementById("s-motion-canvas"), 0, 0, exportCanvas.width, exportCanvas.height);
-
-    if (s_isWatermarkActive && s_watermarkImg && wmEl.style.display !== "none") {
-      ctx.drawImage(s_watermarkImg, wmEl.offsetLeft * scaleX, wmEl.offsetTop * scaleY, wmEl.clientWidth * scaleX, wmEl.clientHeight * scaleY);
-    }
-
-    if (s_isTitleActive && titleEl.style.display !== "none") {
-      const tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
-      const ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
-      ctx.font = `bold ${Math.round(s_titleFontSize * scaleY)}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.fillStyle = "#facc15";
-      ctx.shadowColor = "#000";
-      ctx.shadowBlur = 8;
-      ctx.fillText(titleEl.innerText, tx, ty);
-      ctx.shadowBlur = 0;
-    }
-
-    if (s_isSrtVisible && subEl.style.display !== "none") {
-      const cue = s_srtCues.find(c => curr >= c.start && curr <= c.end);
-      if (cue && cue.text) {
-        const sx = (subEl.offsetLeft + subEl.clientWidth / 2) * scaleX;
-        const sy = (subEl.offsetTop + subEl.clientHeight / 2) * scaleY;
-        const dynFont = Math.round(s_srtFontSize * scaleY);
-
-        ctx.font = `bold ${dynFont}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        if (s_srtBgStyle === "stroke") {
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 5 * scaleX;
-          ctx.strokeText(cue.text, sx, sy);
-          ctx.fillStyle = s_srtFontColor;
-          ctx.fillText(cue.text, sx, sy);
-        } else {
-          const metrics = ctx.measureText(cue.text);
-          const padX = 14 * scaleX;
-          const padY = 8 * scaleY;
-          const bW = metrics.width + padX * 2;
-          const bH = dynFont + padY * 2;
-
-          ctx.fillStyle = s_srtBgStyle;
-          ctx.beginPath();
-          ctx.roundRect(sx - bW / 2, sy - bH / 2, bW, bH, 8 * scaleX);
-          ctx.fill();
-
-          ctx.fillStyle = s_srtFontColor;
-          ctx.fillText(cue.text, sx, sy);
-        }
-      }
-    }
-
-    const pct = Math.min(99, Math.round((curr / dur) * 100));
-    updateGlobalProgress(`ဗီဒီယို Render ပြုလုပ်နေပါသည်...`, pct, true);
-
-    requestAnimationFrame(exportLoop);
-  }
-
-  s_audioEl.onended = () => {
-    recorder.stop();
-    if (s_currentBgm) s_currentBgm.pause();
-  };
-
-  exportLoop();
-}
-
-window.initStoryView = initStoryView;
-if (document.readyState !== "loading") { initStoryView(); } else { document.addEventListener("DOMContentLoaded", initStoryView); }
-
-document.addEventListener("click", (e) => {
-  if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)"))) {
-    setTimeout(initStoryView, 60);
-  }
-});
