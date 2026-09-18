@@ -1,8 +1,9 @@
 let s_currentVoice = "edge-nilar";
-let s_currentScript = "";
+let s_seriesData = null;
+let s_currentEpNum = 1;
 let s_scenePrompts = [];
 let s_sceneImages = [];
-let s_aspectRatio = "16:9"; // "16:9", "9:16", "1:1"
+let s_aspectRatio = "16:9";
 
 let s_audioEl = null;
 let s_currentBgm = null;
@@ -53,36 +54,83 @@ function initStoryView() {
         color: #000;
         border-color: #38bdf8;
       }
+      .ep-btn {
+        padding: 8px 0;
+        border-radius: 6px;
+        border: 1px solid #334155;
+        background: #1e293b;
+        color: #fff;
+        font-weight: bold;
+        cursor: pointer;
+        font-size: 0.8rem;
+      }
+      .ep-btn.active {
+        background: #38bdf8;
+        color: #000;
+        border-color: #38bdf8;
+      }
     </style>
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
-      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း/ပြင်ဆင်ခြင်း -->
+      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1-6 / Movie) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားခြင်း</span>
         </div>
 
-        <div style="display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 8px;">
-          <input type="text" id="s-topic-input" placeholder="ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ပါ..." style="font-size: 0.85rem;" />
-          <select id="s-genre-select" style="height: 40px; font-size: 0.8rem;">
-            <option value="horror">👻 သရဲ</option>
-            <option value="mystery">🔍 လျှို့ဝှက်</option>
-            <option value="drama">💔 ဘဝ</option>
-            <option value="motivation">💪 ခွန်အား</option>
-          </select>
-          <select id="s-duration-select" style="height: 40px; font-size: 0.8rem;">
-            <option value="1">၁ မိနစ်</option>
-            <option value="2">၂ မိနစ်</option>
-            <option value="3">၃ မိနစ်</option>
-          </select>
+        <input type="text" id="s-topic-input" placeholder="ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ပါ (ဥပမာ- ရွာစွန်က သရဲမကြီး)..." style="font-size: 0.85rem;" />
+
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <div>
+            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎬 ဇာတ်လမ်းပုံစံ</label>
+            <select id="s-format-select" style="height: 40px; font-size: 0.8rem;">
+              <option value="series" selected>📺 Series (၆ ပိုင်း)</option>
+              <option value="movie">🎬 Movie (တစ်ပိုင်း)</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎭 အမျိုးအစား</label>
+            <select id="s-genre-select" style="height: 40px; font-size: 0.8rem;">
+              <option value="horror">👻 သရဲ</option>
+              <option value="mystery">🔍 လျှို့ဝှက်</option>
+              <option value="drama">💔 ဘဝ</option>
+              <option value="motivation">💪 ခွန်အား</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.72rem; margin-bottom: 2px;">⏱️ တစ်ပိုင်းကြာချိန်</label>
+            <select id="s-duration-select" style="height: 40px; font-size: 0.8rem;">
+              <option value="1">၁ မိနစ်</option>
+              <option value="2">၂ မိနစ်</option>
+              <option value="3">၃ မိနစ်</option>
+            </select>
+          </div>
         </div>
 
-        <button onclick="handleGenerateStoryScript()" class="btn" style="background: #0284c7; padding: 10px; font-size: 0.85rem;">
-          <span>✨ AI ဖြင့် ပုံပြင်စာသား အရင်ရေးမည်</span>
+        <button onclick="handleGenerateStoryScript()" id="btn-gen-script" class="btn" style="background: #0284c7; padding: 10px; font-size: 0.85rem;">
+          <span>✨ AI ဖြင့် ဇာတ်လမ်း စာသား အရင်ရေးမည်</span>
         </button>
 
-        <textarea id="s-script-textarea" rows="5" placeholder="AI ရေးပေးသော စာသား ဤနေရာတွင် ပေါ်လာမည် (သို့မဟုတ် ကိုယ်တိုင်လည်း စိတ်ကြိုက် စာသား ရိုက်ထည့်/ပြင်ဆင်နိုင်ပါသည်)..." style="font-size: 0.85rem;"></textarea>
+        <!-- Series ဖြစ်ပါက Ep 1 to 6 ခလုတ်များ ပေါ်လာမည့်နေရာ -->
+        <div id="s-ep-buttons-container" style="display: none; flex-direction: column; gap: 6px;">
+          <label style="font-size: 0.75rem; color: #facc15; font-weight: bold;">📺 အပိုင်းများ ရွေးချယ်ရန် (Ep 1 to 6)</label>
+          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
+            <button onclick="selectStoryEpisode(1)" id="btn-sep-1" class="ep-btn active">Ep 1</button>
+            <button onclick="selectStoryEpisode(2)" id="btn-sep-2" class="ep-btn">Ep 2</button>
+            <button onclick="selectStoryEpisode(3)" id="btn-sep-3" class="ep-btn">Ep 3</button>
+            <button onclick="selectStoryEpisode(4)" id="btn-sep-4" class="ep-btn">Ep 4</button>
+            <button onclick="selectStoryEpisode(5)" id="btn-sep-5" class="ep-btn">Ep 5</button>
+            <button onclick="selectStoryEpisode(6)" id="btn-sep-6" class="ep-btn">Ep 6</button>
+          </div>
+        </div>
+
+        <div>
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+            <span id="s-current-label" style="font-size: 0.78rem; color: #38bdf8; font-weight: bold;">📖 ဇာတ်လမ်းစာသား (စိတ်ကြိုက် ပြင်ဆင်နိုင်သည်)</span>
+          </div>
+          <textarea id="s-script-textarea" rows="5" placeholder="AI ရေးပေးသော စာသား ဤနေရာတွင် ပေါ်လာမည် (သို့မဟုတ် ကိုယ်တိုင်လည်း စာသား ရိုက်ထည့်/ပြင်ဆင်နိုင်ပါသည်)..." style="font-size: 0.85rem;"></textarea>
+        </div>
       </div>
 
       <!-- ဆိုဒ် ရွေးချယ်ခြင်း: 16:9 / 9:16 / 1:1 -->
@@ -100,13 +148,12 @@ function initStoryView() {
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo</span>
         </div>
-        <p style="font-size: 0.72rem; color: #94a3b8; margin: 0;">အထက်ပါ စာသားမှ အခန်းလိုက် ပုံဖော်မည့် Prompts များကို ထုတ်ယူပြီး AI ဓာတ်ပုံများ ဆွဲပေးမည်။</p>
+        <p style="font-size: 0.72rem; color: #94a3b8; margin: 0;">လက်ရှိ ရွေးထားသော အပိုင်း၏ စာသားမှ အခန်းလိုက် ပုံဖော်မည့် Prompts ၄ ခု ထုတ်ယူပြီး AI ဓာတ်ပုံများ ဆွဲပေးမည်။</p>
 
         <button onclick="handlePromptToPhoto()" id="btn-prompt-photo" class="btn" style="background: #8b5cf6; padding: 10px; font-size: 0.85rem;">
           <span>🖼️ စာသားမှ ဓာတ်ပုံများ ဆွဲယူမည် (Prompt to Photo)</span>
         </button>
 
-        <!-- Generated Photos Preview Grid -->
         <div id="s-photo-preview-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;">
           <div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="scene-img-0" src="" style="width:100%;height:100%;object-fit:cover;" /></div>
           <div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="scene-img-1" src="" style="width:100%;height:100%;object-fit:cover;" /></div>
@@ -290,7 +337,7 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
-// Aspect Ratio ပြောင်းလဲခြင်း (16:9, 9:16, 1:1)
+// Aspect Ratio ပြောင်းလဲခြင်း
 function setVideoRatio(ratio, el) {
   s_aspectRatio = ratio;
   document.querySelectorAll(".ratio-btn").forEach(b => b.classList.remove("active"));
@@ -316,32 +363,78 @@ function setVideoRatio(ratio, el) {
   renderMotionFrame(0, 60);
 }
 
-// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း
+// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1 to 6 / Movie)
 async function handleGenerateStoryScript() {
   const topic = document.getElementById("s-topic-input").value.trim();
+  const format = document.getElementById("s-format-select").value;
   const genre = document.getElementById("s-genre-select").value;
   const duration = document.getElementById("s-duration-select").value;
+  const btn = document.getElementById("btn-gen-script");
   const textarea = document.getElementById("s-script-textarea");
+  const epContainer = document.getElementById("s-ep-buttons-container");
 
   if (!topic) return alert("ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
 
-  textarea.value = "AI က ပုံပြင်စာသား ရေးသားနေပါသည်... ခေတ္တစောင့်ပေးပါ...";
+  btn.disabled = true;
+  btn.innerText = "⏳ AI က ဇာတ်လမ်းစာသား ရေးသားနေပါသည်...";
 
   try {
     const res = await fetch("/api/generate-story", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate_script", topic, genre, durationMinutes: duration })
+      body: JSON.stringify({
+        action: "generate_script",
+        topic,
+        format,
+        genre,
+        durationMinutes: duration
+      })
     });
+
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
-    textarea.value = data.script;
-    s_currentScript = data.script;
+    if (format === "series") {
+      s_seriesData = data;
+      epContainer.style.display = "flex";
+      selectStoryEpisode(1);
+    } else {
+      s_seriesData = null;
+      epContainer.style.display = "none";
+      document.getElementById("s-current-label").innerText = `🎬 ${data.movie_title || topic} (ရုပ်ရှင်ဇာတ်လမ်းစာသား)`;
+      textarea.value = data.story_text;
+      document.getElementById("s-title-input").value = data.movie_title || topic;
+      updateSTitleText(data.movie_title || topic);
+    }
+
+    btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
+
   } catch (err) {
     alert(`Error: ${err.message}`);
-    textarea.value = "";
+    btn.innerText = "✨ AI ဖြင့် ဇာတ်လမ်း စာသား အရင်ရေးမည်";
+  } finally {
+    btn.disabled = false;
   }
+}
+
+// Episode ခလုတ် ရွေးချယ်ခြင်း
+function selectStoryEpisode(epNum) {
+  if (!s_seriesData || !s_seriesData.episodes) return;
+  s_currentEpNum = epNum;
+
+  for (let i = 1; i <= 6; i++) {
+    const b = document.getElementById(`btn-sep-${i}`);
+    if (b) {
+      if (i === epNum) b.classList.add("active");
+      else b.classList.remove("active");
+    }
+  }
+
+  const ep = s_seriesData.episodes[epNum - 1];
+  document.getElementById("s-current-label").innerText = `📖 အပိုင်း ${epNum}: ${ep.title}`;
+  document.getElementById("s-script-textarea").value = ep.text;
+  document.getElementById("s-title-input").value = ep.title;
+  updateSTitleText(ep.title);
 }
 
 // အဆင့် ၂: Prompt to Photo
@@ -366,7 +459,6 @@ async function handlePromptToPhoto() {
 
     s_scenePrompts = data.prompts || [];
 
-    // Aspect Ratio အလိုက် ပုံဆိုဒ် တွက်ချက်ခြင်း
     let w = 1280, h = 720;
     if (s_aspectRatio === "9:16") { w = 720; h = 1280; }
     if (s_aspectRatio === "1:1") { w = 720; h = 720; }
@@ -508,7 +600,7 @@ function toggleMotionPlayback() {
   }
 }
 
-// Overlays Controls (Title, Watermark, Subtitles)
+// Overlays Controls
 function toggleSTitle() {
   s_isTitleActive = !s_isTitleActive;
   const el = document.getElementById("s-drag-title");
@@ -714,7 +806,7 @@ function setupSTouchResize(targetId, handleId) {
   let isResizing = false;
   let startX, startY, startW, startH;
 
-  function onStart(e) {
+  function onResizeStart(e) {
     e.stopPropagation();
     isResizing = true;
     startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -723,7 +815,7 @@ function setupSTouchResize(targetId, handleId) {
     startH = target.clientHeight;
   }
 
-  function onMove(e) {
+  function onResizeMove(e) {
     if (!isResizing) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -731,12 +823,12 @@ function setupSTouchResize(targetId, handleId) {
     target.style.height = `${Math.max(20, startH + (clientY - startY))}px`;
   }
 
-  function onEnd() { isResizing = false; }
+  function onResizeEnd() { isResizing = false; }
 
-  handle.addEventListener("touchstart", onStart, { passive: false });
-  window.addEventListener("touchmove", onMove, { passive: false });
-  window.addEventListener("touchend", onEnd);
-  handle.addEventListener("mousedown", onStart);
+  handle.addEventListener("touchstart", onResizeStart, { passive: false });
+  window.addEventListener("touchmove", onResizeMove, { passive: false });
+  window.addEventListener("touchend", onResizeEnd);
+  handle.addEventListener("mousedown", onResizeStart);
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onEnd);
 }
@@ -787,7 +879,7 @@ function parseStorySrt(srtText) {
   }).filter(Boolean);
 }
 
-// ၈။ Final Hardcoded Video Export (Aspect Ratio တိကျစွာဖြင့် Export ထုတ်ခြင်း)
+// ၈။ Final Hardcoded Video Export
 async function exportMotionHardcodedVideo() {
   if (!s_audioEl || !s_audioEl.src) return alert("ဗီဒီယိုနှင့် အသံဖိုင် အဆင်သင့် မရှိသေးပါ");
 
@@ -875,7 +967,6 @@ async function exportMotionHardcodedVideo() {
     const curr = s_audioEl.currentTime;
     const dur = s_audioEl.duration || 60;
 
-    // 2.5D Motion Frame
     if (s_sceneImages.length > 0) {
       const segmentDur = dur / s_sceneImages.length;
       const idx = Math.min(s_sceneImages.length - 1, Math.floor(curr / segmentDur));
@@ -896,12 +987,10 @@ async function exportMotionHardcodedVideo() {
       }
     }
 
-    // Hardcoded Watermark
     if (s_isWatermarkActive && s_watermarkImg && wmEl.style.display !== "none") {
       ctx.drawImage(s_watermarkImg, wmEl.offsetLeft * scaleX, wmEl.offsetTop * scaleY, wmEl.clientWidth * scaleX, wmEl.clientHeight * scaleY);
     }
 
-    // Hardcoded Title
     if (s_isTitleActive && titleEl.style.display !== "none") {
       const tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
       const ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
@@ -914,7 +1003,6 @@ async function exportMotionHardcodedVideo() {
       ctx.shadowBlur = 0;
     }
 
-    // Hardcoded Subtitles
     if (s_isSrtVisible && subEl.style.display !== "none") {
       const cue = s_srtCues.find(c => curr >= c.start && curr <= c.end);
       if (cue && cue.text) {
@@ -967,3 +1055,9 @@ async function exportMotionHardcodedVideo() {
 
 window.initStoryView = initStoryView;
 if (document.readyState !== "loading") { initStoryView(); } else { document.addEventListener("DOMContentLoaded", initStoryView); }
+
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)"))) {
+    setTimeout(initStoryView, 60);
+  }
+});
