@@ -18,35 +18,27 @@ function initRecapsView() {
 
   container.innerHTML = `
     <style>
-      /* အသံသရုပ်ဆောင် Box နှင့် Dropdown အရောင်စုံ Styling */
+      /* အသံသရုပ်ဆောင် Box - Blue-Black Background & Clean Styling */
       #recap-voice-actor {
-        background: linear-gradient(135deg, #0f172a, #1e293b);
-        border: 1.5px solid #38bdf8;
-        color: #38bdf8;
-        font-weight: bold;
+        background-color: #080e1a !important;
+        border: 1.5px solid #1e3a8a !important;
+        color: #38bdf8 !important;
+        font-weight: 600;
+        font-size: 0.85rem;
         border-radius: 8px;
         padding: 0 10px;
-        box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+        box-shadow: 0 0 10px rgba(30, 58, 138, 0.4);
       }
       #recap-voice-actor optgroup {
-        background: #090d16;
+        background-color: #050913 !important;
+        color: #94a3b8;
         font-weight: bold;
       }
-      #recap-voice-actor optgroup[label*="Edge"] {
-        color: #38bdf8;
-      }
-      #recap-voice-actor optgroup[label*="Google"] {
-        color: #4ade80;
-      }
-      #recap-voice-actor option.opt-male {
-        color: #38bdf8;
-        background: #1e293b;
-        font-weight: 600;
-      }
-      #recap-voice-actor option.opt-female {
-        color: #f472b6;
-        background: #1e293b;
-        font-weight: 600;
+      #recap-voice-actor option {
+        background-color: #080e1a !important;
+        color: #f1f5f9;
+        padding: 8px;
+        font-size: 0.85rem;
       }
     </style>
 
@@ -54,24 +46,24 @@ function initRecapsView() {
       <!-- ၁။ Video ဖိုင်တင်ရန် -->
       <div class="card">
         <label>🎬 မူရင်း ရုပ်ရှင် ဗီဒီယိုအပိုင်း တင်ပါ</label>
-        <input type="file" id="recap-video-file" accept="video/*" />
+        <input type="file" id="recap-video-file" accept="video/*" onchange="handleVideoFileSelect(event)" />
       </div>
 
-      <!-- ၂။ အသံသရုပ်ဆောင် နှင့် စတိုင် (အရောင်စုံ ပါဝင်သော Voice Selector) -->
+      <!-- ၂။ အသံသရုပ်ဆောင် (Blue-Black + နာမည်တိုများ) နှင့် စတိုင် -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
           <select id="recap-voice-actor" style="height: 44px;">
-            <optgroup label="⚡ Microsoft Edge-TTS (မြန်မာအသံ)">
-              <option value="edge-thiha" class="opt-male">👨 သီဟ (ကျား - ပုံမှန်)</option>
-              <option value="edge-thiha-deep" class="opt-male">🎙️ သီဟ (ကျား - အသံဩဇာကြီး)</option>
-              <option value="edge-thiha-fast" class="opt-male">⚡ သီဟ (ကျား - သွက်လက်)</option>
-              <option value="edge-nilar" class="opt-female">👩 နီလာ (မ - သာယာကြည်လင်)</option>
-              <option value="edge-nilar-warm" class="opt-female">🌸 နီလာ (မ - ညင်သာနွေးထွေး)</option>
+            <optgroup label="Edge-TTS (သဘာဝ)">
+              <option value="edge-thiha">👨 သီဟ (ပုံမှန်)</option>
+              <option value="edge-thiha-deep">🎙️ သီဟ (ဩဇာကြီး)</option>
+              <option value="edge-thiha-fast">⚡ သီဟ (သွက်လက်)</option>
+              <option value="edge-nilar">👩 နီလာ (ကြည်လင်)</option>
+              <option value="edge-nilar-warm">🌸 နီလာ (နွေးထွေး)</option>
             </optgroup>
-            <optgroup label="🌐 Google TTS (မြန်မာအသံ ၂ မျိုး)">
-              <option value="google-my-female" class="opt-female" selected>👩 Google မြန်မာ (မ - သဘာဝကြည်လင်)</option>
-              <option value="google-my-male" class="opt-male">👨 Google မြန်မာ (ကျား - အသံနက်ဩဇာ)</option>
+            <optgroup label="Google TTS">
+              <option value="google-my-female" selected>👩 Google (မ)</option>
+              <option value="google-my-male">👨 Google (ကျား)</option>
             </optgroup>
           </select>
         </div>
@@ -86,7 +78,7 @@ function initRecapsView() {
         </div>
       </div>
 
-      <!-- ၃။ Audio Mixer (Dropdown Accordion) -->
+      <!-- ၃။ Audio Mixer (Dropdown Accordion + BGM Remove Button) -->
       <div class="card" style="background: #131d31; padding: 12px;">
         <div onclick="toggleAudioMixerDropdown()" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🎚️ အသံချိန်ညှိမှု စနစ် (Audio Mixer)</span>
@@ -118,9 +110,13 @@ function initRecapsView() {
             <input type="range" id="vol-bgm-slider" min="0" max="100" value="35" style="width: 100%; cursor: pointer;" />
           </div>
 
+          <!-- BGM File Input with Remove Button -->
           <div>
             <label style="font-size: 0.75rem;">🎵 စိတ်ကြိုက် BGM / တီးလုံးဖိုင် တင်ရန် (MP3/WAV)</label>
-            <input type="file" id="recap-bgm-file" accept="audio/*" style="font-size: 0.75rem; padding: 6px;" />
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+              <input type="file" id="recap-bgm-file" accept="audio/*" onchange="handleBgmFileSelect(event)" style="font-size: 0.75rem; padding: 6px; flex: 1;" />
+              <button id="btn-remove-bgm" onclick="removeBgmAudio()" class="btn" style="display: none; width: auto; padding: 6px 12px; background: #ef4444; font-size: 0.75rem;">❌ ဖျက်မည်</button>
+            </div>
           </div>
         </div>
       </div>
@@ -149,29 +145,28 @@ function initRecapsView() {
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Player Wrapper (Touch Overlays) -->
-        <div id="video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; user-select: none;">
-          <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+        <!-- Video Player Wrapper (Screen ပေါ်တွင် အပြည့်အဝ ဖုံးလွှမ်းနိုင်စေရန် Dynamic Aspect Ratio ထည့်သွင်းထားသည်) -->
+        <div id="video-wrapper" style="position: relative; width: 100%; max-height: 72vh; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; user-select: none; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
+          <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain; display: block;"></video>
 
           <!-- ၁။ Title Overlay -->
           <div id="draggable-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; text-align: center; white-space: nowrap;">
             ခေါင်းစဉ် စာသား
           </div>
 
-          <!-- ၂။ Subtitle Overlay (Touch Resize Handle ↘ ပါဝင်သော စာတန်းထိုး Box) -->
+          <!-- ၂။ Subtitle Overlay with Resize Handle (↘) -->
           <div id="draggable-subtitle" style="position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
             <span id="subtitle-text-content">စာတန်းထိုး ပြသမည့်နေရာ</span>
-            <!-- SRT Resize Icon Button (↘) -->
             <div id="sub-resize-handle" style="position: absolute; right: -7px; bottom: -7px; width: 22px; height: 22px; background: #10b981; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold; box-shadow: 0 0 8px rgba(16,185,129,0.8); z-index: 30;">↘</div>
           </div>
 
-          <!-- ၃။ Watermark Overlay -->
+          <!-- ၃။ Watermark Overlay with Resize Handle (↘) -->
           <div id="draggable-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 70px; height: 70px; cursor: move; z-index: 20; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
             <img id="watermark-preview-img" src="" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" />
             <div id="wm-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
           </div>
 
-          <!-- ၄။ Blur Box Overlay -->
+          <!-- ၄။ Blur Box Overlay with Resize Handle (↘) -->
           <div id="draggable-blur" style="display: none; position: absolute; top: 20px; left: 20px; width: 100px; height: 60px; background: rgba(255,255,255,0.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px dashed #facc15; border-radius: 6px; cursor: move; z-index: 18; align-items: center; justify-content: center; font-size: 11px; color: #facc15; font-weight: bold;">
             BLUR BOX
             <div id="blur-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #facc15; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
@@ -197,13 +192,16 @@ function initRecapsView() {
           </div>
         </div>
 
-        <!-- Watermark & Blur Controls Card -->
+        <!-- Watermark & Blur Controls Card (Remove Button ပါဝင်သည်) -->
         <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
           <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">🎨 Watermark & Blur ကိရိယာများ</span>
 
           <div>
             <label style="font-size: 0.75rem;">🖼️ Watermark ပုံတင်ပါ (PNG / JPG)</label>
-            <input type="file" id="watermark-file-input" accept="image/*" onchange="handleWatermarkUpload(event)" style="font-size: 0.75rem; padding: 6px;" />
+            <div style="display: flex; gap: 8px; align-items: center; margin-top: 4px;">
+              <input type="file" id="watermark-file-input" accept="image/*" onchange="handleWatermarkUpload(event)" style="font-size: 0.75rem; padding: 6px; flex: 1;" />
+              <button id="btn-remove-wm" onclick="removeWatermark()" class="btn" style="display: none; width: auto; padding: 6px 12px; background: #ef4444; font-size: 0.75rem;">❌ ဖျက်မည်</button>
+            </div>
             <small style="color: #94a3b8; font-size: 0.7rem;">* ပုံပေါ်ရှိ (↘) အပြာရောင်ခလုတ်လေးကို ထိဆွဲပြီး Size စိတ်ကြိုက် ချိန်ညှိနိုင်ပါသည်</small>
           </div>
 
@@ -226,7 +224,7 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- စာသားအရောင် ၇ မျိုး (O စက်ဝိုင်း Icon များ) -->
+          <!-- စာသားအရောင် ၇ မျိုး -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">စာသားအရောင် (၇ မျိုး)</label>
             <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
@@ -240,7 +238,7 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (စာသားမပါဘဲ O စက်ဝိုင်း Icon များ) -->
+          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (O စက်ဝိုင်း Icon များ) -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
             <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
@@ -298,10 +296,23 @@ function initRecapsView() {
   setupTouchDragOverlay("draggable-watermark");
   setupTouchDragOverlay("draggable-blur");
 
-  // Resize Handles
   setupTouchResize("draggable-watermark", "wm-resize-handle");
   setupTouchResize("draggable-blur", "blur-resize-handle");
   setupSubtitleTouchResize();
+}
+
+// Video ရွေးချယ်ချိန်တွင် Video ၏ အချိုးအစားအတိုင်း Wrapper ကို ပြောင်းလဲပေးခြင်း (Screen ပေါ် အပြည့်ပေါ်စေရန်)
+function handleVideoFileSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const videoPlayer = document.getElementById("recap-video-player");
+  const wrapper = document.getElementById("video-wrapper");
+
+  videoPlayer.src = URL.createObjectURL(file);
+  videoPlayer.onloadedmetadata = () => {
+    const aspect = (videoPlayer.videoWidth || 16) / (videoPlayer.videoHeight || 9);
+    wrapper.style.aspectRatio = `${aspect}`;
+  };
 }
 
 function toggleAudioMixerDropdown() {
@@ -320,7 +331,6 @@ function setupAudioMixerListeners() {
   const vSlider = document.getElementById("vol-video-slider");
   const aSlider = document.getElementById("vol-ai-slider");
   const bSlider = document.getElementById("vol-bgm-slider");
-  const bgmFileInput = document.getElementById("recap-bgm-file");
   const videoPlayer = document.getElementById("recap-video-player");
 
   vSlider.addEventListener("input", (e) => {
@@ -337,16 +347,54 @@ function setupAudioMixerListeners() {
     document.getElementById("vol-bgm-val").innerText = `${e.target.value}%`;
     if (currentBgmAudio) currentBgmAudio.volume = e.target.value / 100;
   });
+}
 
-  bgmFileInput.addEventListener("change", (e) => {
-    if (e.target.files && e.target.files[0]) {
-      const bgmUrl = URL.createObjectURL(e.target.files[0]);
-      if (currentBgmAudio) currentBgmAudio.pause();
-      currentBgmAudio = new Audio(bgmUrl);
-      currentBgmAudio.loop = true;
-      currentBgmAudio.volume = bSlider.value / 100;
-    }
-  });
+// BGM Upload & Remove စနစ်
+function handleBgmFileSelect(e) {
+  if (e.target.files && e.target.files[0]) {
+    const bgmUrl = URL.createObjectURL(e.target.files[0]);
+    if (currentBgmAudio) currentBgmAudio.pause();
+    currentBgmAudio = new Audio(bgmUrl);
+    currentBgmAudio.loop = true;
+    currentBgmAudio.volume = document.getElementById("vol-bgm-slider").value / 100;
+    document.getElementById("btn-remove-bgm").style.display = "block";
+  }
+}
+
+function removeBgmAudio() {
+  if (currentBgmAudio) {
+    currentBgmAudio.pause();
+    currentBgmAudio = null;
+  }
+  document.getElementById("recap-bgm-file").value = "";
+  document.getElementById("btn-remove-bgm").style.display = "none";
+}
+
+// Watermark Upload & Remove စနစ်
+function handleWatermarkUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    watermarkImg = new Image();
+    watermarkImg.src = e.target.result;
+    watermarkImg.onload = () => {
+      document.getElementById("watermark-preview-img").src = e.target.result;
+      document.getElementById("draggable-watermark").style.display = "block";
+      document.getElementById("btn-remove-wm").style.display = "block";
+      isWatermarkActive = true;
+    };
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeWatermark() {
+  watermarkImg = null;
+  isWatermarkActive = false;
+  document.getElementById("watermark-file-input").value = "";
+  document.getElementById("draggable-watermark").style.display = "none";
+  document.getElementById("btn-remove-wm").style.display = "none";
 }
 
 function toggleVideoTitle() {
@@ -426,7 +474,6 @@ function setupTouchDragOverlay(elementId) {
   window.addEventListener("mouseup", onEnd);
 }
 
-// Subtitle Box ကို Touch ဖြင့် Size ချိန်ညှိနိုင်သော စနစ်
 function setupSubtitleTouchResize() {
   const handle = document.getElementById("sub-resize-handle");
   const slider = document.getElementById("srt-size-slider");
@@ -502,23 +549,6 @@ function setupTouchResize(targetId, handleId) {
   handle.addEventListener("mousedown", onResizeStart);
   window.addEventListener("mousemove", onResizeMove);
   window.addEventListener("mouseup", onResizeEnd);
-}
-
-function handleWatermarkUpload(event) {
-  const file = event.target.files[0];
-  if (!file) return;
-
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    watermarkImg = new Image();
-    watermarkImg.src = e.target.result;
-    watermarkImg.onload = () => {
-      document.getElementById("watermark-preview-img").src = e.target.result;
-      document.getElementById("draggable-watermark").style.display = "block";
-      isWatermarkActive = true;
-    };
-  };
-  reader.readAsDataURL(file);
 }
 
 function toggleBlurBox() {
@@ -719,6 +749,7 @@ async function extractAudioOptimized(file) {
   let binary = "";
   const bytes = new Uint8Array(outBuffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  
   return { audioBase64: btoa(binary), duration: audioBuffer.duration };
 }
 
