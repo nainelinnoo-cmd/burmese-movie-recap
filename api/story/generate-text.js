@@ -1,6 +1,10 @@
+const { GoogleGenAI } = require("@google/genai");
+const { Groq } = require("groq-sdk");
+
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "" });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-// ၁။ Google Translate TTS
 async function fetchGoogleTTS(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
@@ -25,7 +29,6 @@ async function fetchGoogleTTS(text) {
   return Buffer.concat(audioBuffers).toString("base64");
 }
 
-// ၂။ Edge-TTS
 async function fetchEdgeTTS(text, voice = "edge-thiha") {
   const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
   const controller = new AbortController();
@@ -73,96 +76,67 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, "edge-thiha"); } catch (e) { return await fetchGoogleTTS(text); }
 }
 
-// ၃။ တိုက်ရိုက်ခေါ်ယူမည့် AI Engine
-async function runAIWithModel(prompt, systemInstruction = "") {
-  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
-  const groqKey = process.env.GROQ_API_KEY;
+async function runAIWithModel(prompt) {
+  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
 
-  // အဆင့် ၁: Gemini REST API တိုက်ရိုက် ချိတ်ဆက်ခြင်း
-  if (geminiKey) {
-    const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash"];
-    for (const m of geminiModels) {
+  if (apiKey) {
+    const REAL_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
+    for (const m of REAL_GEMINI_MODELS) {
       try {
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${geminiKey}`;
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 15000);
-
-        const gRes = await fetch(url, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{ parts: [{ text: prompt }] }],
-            systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined
-          }),
-          signal: controller.signal
+        const response = await ai.models.generateContent({
+          model: m,
+          contents: prompt
         });
-        clearTimeout(timeout);
-
-        if (gRes.ok) {
-          const data = await gRes.json();
-          const out = data.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (out && out.trim()) return { text: out.trim(), modelUsed: m };
+        if (response && response.text && response.text.trim()) {
+          return { text: response.text.trim(), modelUsed: m };
         }
-      } catch (e) {}
+      } catch (e) {
+        try {
+          const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
+          const gRes = await fetch(restUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: prompt }] }]
+            })
+          });
+          if (gRes.ok) {
+            const data = await gRes.json();
+            const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (txt && txt.trim()) return { text: txt.trim(), modelUsed: m };
+          }
+        } catch (restErr) {}
+      }
     }
   }
 
-  // အဆင့် ၂: Groq API တိုက်ရိုက် ချိတ်ဆက်ခြင်း
-  if (groqKey) {
+  if (process.env.GROQ_API_KEY) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${groqKey}`
-        },
-        body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
-          messages: [
-            ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-            { role: "user", content: prompt }
-          ]
-        }),
-        signal: controller.signal
+      const gRes = await groq.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }]
       });
-      clearTimeout(timeout);
-
-      if (groqRes.ok) {
-        const data = await groqRes.json();
-        const out = data.choices?.[0]?.message?.content;
-        if (out && out.trim()) return { text: out.trim(), modelUsed: "Groq (Llama-3.3)" };
-      }
-    } catch (e) {}
+      const content = gRes.choices[0]?.message?.content?.trim();
+      if (content) return { text: content, modelUsed: "Groq (Llama-3.3)" };
+    } catch (err) {}
   }
 
-  // အဆင့် ၃: Pollinations AI POST (Key မလိုဘဲ အမြဲအလုပ်လုပ်သော Fallback)
   try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 18000);
-
     const pRes = await fetch("https://text.pollinations.ai/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        messages: [
-          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-          { role: "user", content: prompt }
-        ]
-      }),
-      signal: controller.signal
+        messages: [{ role: "user", content: prompt }],
+        model: "openai"
+      })
     });
-    clearTimeout(timeout);
-
     if (pRes.ok) {
       const pText = await pRes.text();
       if (pText && pText.trim()) return { text: pText.trim(), modelUsed: "Pollinations AI" };
     }
   } catch (e) {}
 
-  throw new Error("AI ဆာဗာများနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ Vercel Environment Variables ထဲတွင် GEMINI_API_KEY မှန်မမှန် စစ်ဆေးပေးပါ။");
+  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်မရပါ။ ခေတ္တစောင့်ပြီး ထပ်မံကြိုးစားပေးပါ။");
 }
 
 function filterStrictBurmeseStory(rawText) {
@@ -219,10 +193,10 @@ module.exports = async (req, res) => {
       const count = parseInt(photoCount) || 4;
 
       const prompt = `Read this story snippet: "${scriptText.substring(0, 450)}"
-Translate the visual scenes into exactly ${count} cinematic English image prompts for AI generation.
-Output format: ${count} descriptive English lines only. No numbers.`;
+Extract exactly ${count} cinematic scene descriptions and translate into descriptive English image prompts.
+Output format: ${count} English prompts, one per line. No numbering, no introduction.`;
 
-      const aiRes = await runAIWithModel(prompt, "You are a prompt engineer. Output English image prompts only, one per line. No numbers.");
+      const aiRes = await runAIWithModel(prompt);
       const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
@@ -243,12 +217,11 @@ Output format: ${count} descriptive English lines only. No numbers.`;
 
     const selectedMins = parseInt(durationMinutes) || 1;
     const words = selectedMins * 105;
-    const systemPrompt = "You are a professional Burmese author. Output strictly continuous Burmese story narration. No numbers, no lists, no English words.";
 
     if (format === "series") {
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
 အခန်းဆက် ၆ ပိုင်းပါဝင်သော မြန်မာပုံပြင် ရေးပေးပါ။
-အပိုင်းတစ်ခုစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် မတပ်ပါနှင့်။
+အပိုင်းတစ်ခုစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် မတပ်ပါနှင့်။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
 === အပိုင်း ၂ ===
@@ -262,7 +235,7 @@ Output format: ${count} descriptive English lines only. No numbers.`;
 === အပိုင်း ၆ ===
 [ဇာတ်လမ်းစာသား]`;
 
-      const aiRes = await runAIWithModel(prompt, systemPrompt);
+      const aiRes = await runAIWithModel(prompt);
       const parts = aiRes.text.split(/=== အပိုင်း\s*\d+\s*===/);
 
       const episodes = [];
@@ -286,9 +259,9 @@ Output format: ${count} descriptive English lines only. No numbers.`;
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
 ပြီးပြည့်စုံသော ရုပ်ရှင်ပုံပြင် ဇာတ်လမ်းစာသားကို မြန်မာဘာသာသက်သက်ဖြင့် စာပိုဒ်လိုက် ရေးပေးပါ။
 စာလုံးရေ ခန့်မှန်းခြေ: ${words} လုံး။
-စည်းမျဉ်း: နံပါတ်စဉ် လုံးဝမတပ်ရပါ။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။ စကားပြေသက်သက်သာ ရေးပါ။`;
+စည်းမျဉ်း: နံပါတ်စဉ် (၁၊ ၂၊ ၃ သို့မဟုတ် 1, 2, 3) လုံးဝမတပ်ရပါ။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။ ပုံပြင်စကားပြေ သက်သက်သာ ရေးပါ။`;
 
-      const aiRes = await runAIWithModel(prompt, systemPrompt);
+      const aiRes = await runAIWithModel(prompt);
       const cleanStory = filterStrictBurmeseStory(aiRes.text);
 
       return res.status(200).json({
