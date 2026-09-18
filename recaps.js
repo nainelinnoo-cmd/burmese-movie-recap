@@ -18,7 +18,6 @@ function initRecapsView() {
 
   container.innerHTML = `
     <style>
-      /* အသံသရုပ်ဆောင် Box - Blue-Black Background & Clean Styling */
       #recap-voice-actor {
         background-color: #080e1a !important;
         border: 1.5px solid #1e3a8a !important;
@@ -49,7 +48,7 @@ function initRecapsView() {
         <input type="file" id="recap-video-file" accept="video/*" onchange="handleVideoFileSelect(event)" />
       </div>
 
-      <!-- ၂။ အသံသရုပ်ဆောင် (Blue-Black + နာမည်တိုများ) နှင့် စတိုင် -->
+      <!-- ၂။ အသံသရုပ်ဆောင် (သီဟ၊ နီလာ၊ Google ကျား/မ) နှင့် စတိုင် -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
@@ -58,11 +57,11 @@ function initRecapsView() {
               <option value="edge-thiha">👨 သီဟ (ပုံမှန်)</option>
               <option value="edge-thiha-deep">🎙️ သီဟ (ဩဇာကြီး)</option>
               <option value="edge-thiha-fast">⚡ သီဟ (သွက်လက်)</option>
-              <option value="edge-nilar">👩 နီလာ (ကြည်လင်)</option>
+              <option value="edge-nilar" selected>👩 နီလာ (ကြည်လင်)</option>
               <option value="edge-nilar-warm">🌸 နီလာ (နွေးထွေး)</option>
             </optgroup>
             <optgroup label="Google TTS">
-              <option value="google-my-female" selected>👩 Google (မ)</option>
+              <option value="google-my-female">👩 Google (မ)</option>
               <option value="google-my-male">👨 Google (ကျား)</option>
             </optgroup>
           </select>
@@ -238,7 +237,7 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (O စက်ဝိုင်း Icon များ) -->
+          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
             <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
@@ -711,8 +710,8 @@ function parseSrtCues(srtText) {
   }).filter(Boolean);
 }
 
-// Gemini Vision အတွက် မြင်ကွင်း Snapshots ၅ ပုံ ဖြတ်ထုတ်ခြင်း
-async function extractVideoKeyframes(file, count = 5) {
+// ပေါ့ပါးသော Snapshots ၃ ပုံ ဖြတ်ယူခြင်း (Upload အမြန်ဆုံး ပြီးစေရန် အရွယ်အစား ချုံ့ထားသည်)
+async function extractVideoKeyframes(file) {
   return new Promise((resolve) => {
     const video = document.createElement("video");
     video.preload = "auto";
@@ -723,14 +722,11 @@ async function extractVideoKeyframes(file, count = 5) {
 
     video.onloadedmetadata = async () => {
       const duration = video.duration || 10;
-      const timestamps = [];
-      for (let i = 1; i <= count; i++) {
-        timestamps.push((duration / (count + 1)) * i);
-      }
+      const timestamps = [duration * 0.2, duration * 0.5, duration * 0.8];
 
       const canvas = document.createElement("canvas");
-      const width = 320;
-      const height = Math.round((video.videoHeight / (video.videoWidth || 1)) * width) || 180;
+      const width = 240;
+      const height = Math.round((video.videoHeight / (video.videoWidth || 1)) * width) || 135;
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext("2d");
@@ -742,7 +738,7 @@ async function extractVideoKeyframes(file, count = 5) {
           let done = false;
           const timer = setTimeout(() => {
             if (!done) { done = true; res(); }
-          }, 800);
+          }, 600);
 
           video.currentTime = t;
           video.onseeked = () => {
@@ -751,7 +747,7 @@ async function extractVideoKeyframes(file, count = 5) {
               clearTimeout(timer);
               try {
                 ctx.drawImage(video, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL("image/jpeg", 0.5);
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.35);
                 const base64 = dataUrl.split(",")[1];
                 if (base64) frames.push(base64);
               } catch (e) {}
@@ -778,7 +774,7 @@ async function extractAudioOptimized(file) {
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
   const targetSampleRate = 16000;
-  const maxSeconds = Math.min(audioBuffer.duration, 70);
+  const maxSeconds = Math.min(audioBuffer.duration, 60);
   const targetLength = Math.floor(maxSeconds * targetSampleRate);
 
   const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
@@ -855,10 +851,9 @@ async function handleGenerateRecap() {
 
     const [{ audioBase64, duration }, frames] = await Promise.all([
       extractAudioOptimized(file),
-      extractVideoKeyframes(file, 5)
+      extractVideoKeyframes(file)
     ]);
 
-    // ဗီဒီယို၏ အစစ်အမှန် ကြာချိန် (ဥပမာ- ၃၆ စက္ကန့်) ကို တိကျစွာ ရယူခြင်း
     const actualVideoDuration = Math.round(videoPlayer.duration || duration || 30);
 
     pTitle.innerText = "Gemini Vision က ဗီဒီယိုအပြည့် Recap ရေးနေပါသည်...";
@@ -876,7 +871,18 @@ async function handleGenerateRecap() {
       }),
     });
 
-    const scriptData = await scriptRes.json();
+    // Safe JSON Parsing (Vercel Timeout တက်ပါက တိုက်ရိုက်ဖမ်းယူသည်)
+    const scriptRawText = await scriptRes.text();
+    let scriptData;
+    try {
+      scriptData = JSON.parse(scriptRawText);
+    } catch (e) {
+      if (scriptRawText.includes("TIMEOUT")) {
+        throw new Error("ဆာဗာ ကြာချိန် ၁၀ စက္ကန့် ကျော်လွန်သွားပါသည် (Timeout)။ ဗီဒီယိုဖိုင်ကို ပြန်တင်ပြီး စမ်းသပ်ပေးပါခင်ဗျာ။");
+      }
+      throw new Error(`ဆာဗာမှ မှားယွင်းသော တုံ့ပြန်မှု ရရှိပါသည်: ${scriptRawText.substring(0, 100)}`);
+    }
+
     if (!scriptRes.ok) throw new Error(scriptData.error || "Recap စာသား ရေးသားမှု မအောင်မြင်ပါ");
 
     const recapScript = scriptData.script;
@@ -896,7 +902,14 @@ async function handleGenerateRecap() {
       })
     });
 
-    const audioData = await audioRes.json();
+    const audioRawText = await audioRes.text();
+    let audioData;
+    try {
+      audioData = JSON.parse(audioRawText);
+    } catch (e) {
+      throw new Error(`အသံဆာဗာ မှားယွင်းနေပါသည်: ${audioRawText.substring(0, 100)}`);
+    }
+
     if (!audioRes.ok) throw new Error(audioData.error || "အသံဖိုင် ထုတ်ယူမှု မအောင်မြင်ပါ");
 
     pPercent.innerText = "100%";
