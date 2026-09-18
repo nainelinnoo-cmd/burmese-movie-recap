@@ -1,6 +1,9 @@
 let currentRecapAudio = null;
 let recapSrtCues = [];
 let isSrtVisible = true;
+let srtFontSize = 18;
+let srtFontColor = "#ffffff";
+let srtBgColor = "rgba(0,0,0,0.75)";
 
 function initRecapsView() {
   const container = document.getElementById("view-recaps");
@@ -11,7 +14,7 @@ function initRecapsView() {
         <input type="file" id="recap-video-file" accept="video/*" />
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
           <select id="recap-voice-actor" style="height: 44px;">
@@ -72,58 +75,76 @@ function initRecapsView() {
 
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
 
-      <!-- Video Player with Touch-Draggable Subtitle Overlay -->
+      <!-- Result View -->
       <div id="recap-result-box" style="display: none; flex-direction: column; gap: 12px;">
         <div class="card">
           <label>📝 ထုတ်လုပ်ထားသော Recap စာသား</label>
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Wrapper -->
+        <!-- Video Player Wrapper (Controls ပါဝင်ပြီး Video Play ရရှိစေရန် ပြင်ဆင်ထားသည်) -->
         <div id="video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155;">
-          <video id="recap-video-player" playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
+          <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
           
           <!-- Draggable Subtitle Box -->
-          <div id="draggable-subtitle" style="position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); width: 88%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.7); padding: 6px 12px; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: move; user-select: none; z-index: 10; touch-action: none;">
+          <div id="draggable-subtitle" style="position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); width: 88%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; user-select: none; z-index: 10; touch-action: none;">
             စာတန်းထိုး နေရာရွှေ့နိုင်သည်
           </div>
         </div>
 
-        <!-- SRT Controller Settings -->
-        <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
+        <!-- SRT Controller Card -->
+        <div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #131d31;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
-            <button onclick="toggleSrtVisibility()" id="btn-srt-toggle" class="btn" style="width: auto; padding: 6px 12px; font-size: 0.75rem; background: #0284c7;">SRT: ON</button>
+            <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
+            <div style="display: flex; gap: 6px;">
+              <button onclick="toggleSrtEditBox()" id="btn-srt-edit-toggle" class="btn" style="width: auto; padding: 6px 10px; font-size: 0.75rem; background: #f59e0b; color: #000;">✏️ Edit SRT</button>
+              <button onclick="toggleSrtVisibility()" id="btn-srt-toggle" class="btn" style="width: auto; padding: 6px 10px; font-size: 0.75rem; background: #0284c7; color: #fff;">SRT: ON</button>
+            </div>
           </div>
 
-          <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
+          <!-- Color Icons & Background Swatches & 10-100 Size Slider -->
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Font Color Icons -->
             <div>
-              <label style="font-size: 0.75rem;">စာသားအရောင်</label>
-              <select id="srt-font-color" onchange="applySrtStyle()" style="height: 38px;">
-                <option value="#ffffff">ဖြူ</option>
-                <option value="#facc15">ဝါ</option>
-                <option value="#38bdf8">အပြာနု</option>
-                <option value="#4ade80">စိမ်း</option>
-              </select>
+              <label style="font-size: 0.75rem; margin-bottom: 6px;">စာသားအရောင် (Icons ဖြင့် ရွေးချယ်ပါ)</label>
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <div onclick="selectFontColor('#ffffff', this)" class="color-dot active-dot" style="background: #ffffff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
+                <div onclick="selectFontColor('#facc15', this)" class="color-dot" style="background: #facc15; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+                <div onclick="selectFontColor('#38bdf8', this)" class="color-dot" style="background: #38bdf8; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+                <div onclick="selectFontColor('#4ade80', this)" class="color-dot" style="background: #4ade80; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+                <div onclick="selectFontColor('#f87171', this)" class="color-dot" style="background: #f87171; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+                <div onclick="selectFontColor('#c084fc', this)" class="color-dot" style="background: #c084fc; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              </div>
             </div>
+
+            <!-- Background Color Icons -->
             <div>
-              <label style="font-size: 0.75rem;">နောက်ခံအရောင်</label>
-              <select id="srt-bg-color" onchange="applySrtStyle()" style="height: 38px;">
-                <option value="rgba(0,0,0,0.7)">မည်းကြည်</option>
-                <option value="#000000">မည်းနက်</option>
-                <option value="transparent">မပါ (None)</option>
-                <option value="rgba(220,38,38,0.7)">နီကြည်</option>
-              </select>
+              <label style="font-size: 0.75rem; margin-bottom: 6px;">နောက်ခံအရောင်</label>
+              <div style="display: flex; gap: 8px;">
+                <button onclick="selectBgColor('rgba(0,0,0,0.75)')" class="btn" style="padding: 6px 10px; font-size: 0.7rem; background: #000; color: #fff; border: 1px solid #475569; width: auto;">မည်းကြည်</button>
+                <button onclick="selectBgColor('#000000')" class="btn" style="padding: 6px 10px; font-size: 0.7rem; background: #111; color: #fff; border: 1px solid #475569; width: auto;">အနက်</button>
+                <button onclick="selectBgColor('transparent')" class="btn" style="padding: 6px 10px; font-size: 0.7rem; background: #334155; color: #fff; width: auto;">မပါ (None)</button>
+                <button onclick="selectBgColor('rgba(220,38,38,0.75)')" class="btn" style="padding: 6px 10px; font-size: 0.7rem; background: #991b1b; color: #fff; width: auto;">နီကြည်</button>
+              </div>
             </div>
+
+            <!-- Font Size Slider (10 to 100) -->
             <div>
-              <label style="font-size: 0.75rem;">စာလုံးဆိုဒ်</label>
-              <select id="srt-font-size" onchange="applySrtStyle()" style="height: 38px;">
-                <option value="14px">သေး (14px)</option>
-                <option value="16px" selected>လတ် (16px)</option>
-                <option value="20px">ကြီး (20px)</option>
-                <option value="24px">အကြီးဆုံး</option>
-              </select>
+              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+                <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size)</span>
+                <span id="srt-font-size-val" style="color: #38bdf8; font-weight: bold;">18px</span>
+              </div>
+              <input type="range" id="srt-size-slider" min="10" max="100" value="18" oninput="changeSrtFontSize(this.value)" style="width: 100%; cursor: pointer;" />
             </div>
+          </div>
+
+          <!-- SRT Edit & Real-Time Save Container (Toggleable) -->
+          <div id="srt-edit-panel" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
+            <label style="font-size: 0.75rem; color: #facc15;">✏️ SRT Script ကို အချိန်/စာသား စိတ်ကြိုက် ပြင်ဆင်ပါ-</label>
+            <textarea id="srt-edit-textarea" rows="6" style="font-family: monospace; font-size: 0.8rem;"></textarea>
+            <button onclick="saveAndApplySrtEdit()" class="btn" style="background: #10b981; padding: 10px; font-size: 0.85rem;">
+              <span>💾 SRT သိမ်းဆည်းပြီး Video တွင် Real-Time စစ်မည်</span>
+            </button>
           </div>
 
           <button onclick="downloadSrtFile()" class="btn" style="background: #6366f1; padding: 10px; font-size: 0.85rem;">
@@ -154,59 +175,43 @@ function setupVolumeListeners() {
   });
 }
 
-// Touch & Mouse Dragging Subtitle over Video
-function setupTouchDragSubtitle() {
-  const sub = document.getElementById("draggable-subtitle");
-  const wrapper = document.getElementById("video-wrapper");
-
-  let isDragging = false;
-  let startX, startY, origX, origY;
-
-  function onStart(e) {
-    isDragging = true;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    startX = clientX;
-    startY = clientY;
-    origX = sub.offsetLeft;
-    origY = sub.offsetTop;
-    sub.style.transform = "none";
-  }
-
-  function onMove(e) {
-    if (!isDragging) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    const deltaX = clientX - startX;
-    const deltaY = clientY - startY;
-
-    let newX = origX + deltaX;
-    let newY = origY + deltaY;
-
-    newX = Math.max(0, Math.min(newX, wrapper.clientWidth - sub.clientWidth));
-    newY = Math.max(0, Math.min(newY, wrapper.clientHeight - sub.clientHeight));
-
-    sub.style.left = `${newX}px`;
-    sub.style.top = `${newY}px`;
-    sub.style.bottom = "auto";
-  }
-
-  function onEnd() { isDragging = false; }
-
-  sub.addEventListener("touchstart", onStart, { passive: false });
-  window.addEventListener("touchmove", onMove, { passive: false });
-  window.addEventListener("touchend", onEnd);
-
-  sub.addEventListener("mousedown", onStart);
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onEnd);
+function selectFontColor(color, el) {
+  srtFontColor = color;
+  document.querySelectorAll(".color-dot").forEach(d => d.style.borderColor = "transparent");
+  el.style.borderColor = "#38bdf8";
+  applySrtStyles();
 }
 
-function applySrtStyle() {
+function selectBgColor(color) {
+  srtBgColor = color;
+  applySrtStyles();
+}
+
+function changeSrtFontSize(size) {
+  srtFontSize = size;
+  document.getElementById("srt-font-size-val").innerText = `${size}px`;
+  applySrtStyles();
+}
+
+function applySrtStyles() {
   const sub = document.getElementById("draggable-subtitle");
-  sub.style.color = document.getElementById("srt-font-color").value;
-  sub.style.background = document.getElementById("srt-bg-color").value;
-  sub.style.fontSize = document.getElementById("srt-font-size").value;
+  if (sub) {
+    sub.style.color = srtFontColor;
+    sub.style.background = srtBgColor;
+    sub.style.fontSize = `${srtFontSize}px`;
+  }
+}
+
+function toggleSrtEditBox() {
+  const panel = document.getElementById("srt-edit-panel");
+  panel.style.display = panel.style.display === "none" ? "flex" : "none";
+}
+
+function saveAndApplySrtEdit() {
+  const newSrtText = document.getElementById("srt-edit-textarea").value;
+  window.currentSrtRaw = newSrtText;
+  recapSrtCues = parseSrtCues(newSrtText);
+  alert("SRT ကို အောင်မြင်စွာ သိမ်းဆည်းပြီး Video တွင် Real-Time စစ်ဆေးနိုင်ပါပြီ!");
 }
 
 function toggleSrtVisibility() {
@@ -219,6 +224,7 @@ function toggleSrtVisibility() {
 }
 
 function parseSrtCues(srtText) {
+  if (!srtText) return [];
   const blocks = srtText.trim().split(/\n\s*\n/);
   return blocks.map(block => {
     const lines = block.split("\n");
@@ -246,6 +252,50 @@ function downloadSrtFile() {
   a.href = URL.createObjectURL(blob);
   a.download = "recap_subtitles.srt";
   a.click();
+}
+
+function setupTouchDragSubtitle() {
+  const sub = document.getElementById("draggable-subtitle");
+  const wrapper = document.getElementById("video-wrapper");
+
+  let isDragging = false;
+  let startX, startY, origX, origY;
+
+  function onStart(e) {
+    isDragging = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
+    origX = sub.offsetLeft;
+    origY = sub.offsetTop;
+    sub.style.transform = "none";
+  }
+
+  function onMove(e) {
+    if (!isDragging) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    let newX = origX + (clientX - startX);
+    let newY = origY + (clientY - startY);
+
+    newX = Math.max(0, Math.min(newX, wrapper.clientWidth - sub.clientWidth));
+    newY = Math.max(0, Math.min(newY, wrapper.clientHeight - sub.clientHeight));
+
+    sub.style.left = `${newX}px`;
+    sub.style.top = `${newY}px`;
+    sub.style.bottom = "auto";
+  }
+
+  function onEnd() { isDragging = false; }
+
+  sub.addEventListener("touchstart", onStart, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onEnd);
+  sub.addEventListener("mousedown", onStart);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onEnd);
 }
 
 async function extractAudioOptimized(file) {
@@ -350,6 +400,7 @@ async function handleGenerateRecap() {
     scriptText.value = data.script;
 
     window.currentSrtRaw = data.srtText;
+    document.getElementById("srt-edit-textarea").value = data.srtText;
     recapSrtCues = parseSrtCues(data.srtText);
 
     const audioBlob = new Blob([Uint8Array.from(atob(data.voiceoverBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
@@ -360,7 +411,7 @@ async function handleGenerateRecap() {
     videoPlayer.volume = document.getElementById("vol-video-slider").value / 100;
     currentRecapAudio.volume = document.getElementById("vol-ai-slider").value / 100;
 
-    // Subtitle Realtime Update
+    // Real-Time Subtitle View Update
     videoPlayer.ontimeupdate = () => {
       if (!isSrtVisible) return;
       const curr = videoPlayer.currentTime;
