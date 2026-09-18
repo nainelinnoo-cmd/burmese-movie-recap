@@ -4,8 +4,7 @@ const { Groq } = require("groq-sdk");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 
-// ၃ စက္ကန့်အတွင်း မရပါက နောက် Model သို့ ချက်ချင်းကျော်မည့် Timeout စနစ်
-function withTimeout(promise, ms = 3500) {
+function withTimeout(promise, ms = 15000) {
   return Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
@@ -13,13 +12,10 @@ function withTimeout(promise, ms = 3500) {
 }
 
 async function runAIWithModel(prompt, systemInstruction = "") {
-  // ဦးစားပေး စစ်ဆေးမည့် Gemini Models များ
   const GEMINI_MODELS = [
-    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-3.6-flash",
-    "gemini-3.8-flash"
+    "gemini-2.5-flash"
   ];
 
   if (process.env.GEMINI_API_KEY) {
@@ -31,18 +27,15 @@ async function runAIWithModel(prompt, systemInstruction = "") {
             contents: prompt,
             config: systemInstruction ? { systemInstruction } : {}
           }),
-          3500
+          12000
         );
         if (response && response.text) {
           return { text: response.text.trim(), modelUsed: m };
         }
-      } catch (e) {
-        // Model မရှိပါက သို့မဟုတ် ၃ စက္ကန့်ကျော်ပါက နောက် model သို့ ချက်ချင်းသွားမည်
-      }
+      } catch (e) {}
     }
   }
 
-  // Groq Fallback
   if (process.env.GROQ_API_KEY) {
     try {
       const gRes = await withTimeout(
@@ -53,14 +46,13 @@ async function runAIWithModel(prompt, systemInstruction = "") {
             { role: "user", content: prompt }
           ]
         }),
-        4000
+        12000
       );
       const content = gRes.choices[0]?.message?.content?.trim();
       if (content) return { text: content, modelUsed: "Groq (Llama-3.1)" };
     } catch (err) {}
   }
 
-  // Pollinations Fallback
   try {
     const res = await withTimeout(
       fetch("https://text.pollinations.ai/", {
@@ -73,7 +65,7 @@ async function runAIWithModel(prompt, systemInstruction = "") {
           ]
         })
       }),
-      4000
+      15000
     );
     if (res.ok) {
       const pText = await res.text();
@@ -81,10 +73,9 @@ async function runAIWithModel(prompt, systemInstruction = "") {
     }
   } catch (e) {}
 
-  throw new Error("AI မော်ဒယ်များ ခေတ္တ မအားလပ်ပါ။ ထပ်မံ ကြိုးစားပေးပါ။");
+  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ ခေတ္တစောင့်ပြီး ထပ်မံကြိုးစားပေးပါ။");
 }
 
-// နံပါတ်စဉ်များနှင့် အင်္ဂလိပ်စာလုံးများကို အပြီးတိုင် ဖယ်ရှားသည့် စနစ်
 function filterStrictBurmeseStory(rawText) {
   if (!rawText) return "";
   let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "")
@@ -106,7 +97,6 @@ function filterStrictBurmeseStory(rawText) {
     const engCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
     if (engCount > 2) continue;
 
-    // စာကြောင်းရှေ့ရှိ နံပါတ်စဉ်များ ဖြတ်ထုတ်ခြင်း
     trimmed = trimmed.replace(/^[\s\d၀-၉\.\)\-–—:]+/g, "").trim();
     trimmed = trimmed.replace(/[a-zA-Z0-9_\-–—#*@$%&+=<>{}\[\]\\\/^~`|]/g, "").trim();
 
@@ -128,7 +118,6 @@ module.exports = async (req, res) => {
   try {
     const { action, topic, genre, format, durationMinutes, scriptText, photoCount } = req.body;
 
-    // အဆင့် ၂ အတွက်: Prompt Translation
     if (action === "translate_to_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
@@ -137,7 +126,7 @@ module.exports = async (req, res) => {
 Task: Extract exactly ${count} visual cinematic scenes and translate into descriptive English image prompts.
 Output format: ${count} English prompts, one per line. No numbers.`;
 
-      const aiRes = await runAIWithModel(prompt, "You are an image prompt engineer. Output only English prompts, one per line.");
+      const aiRes = await runAIWithModel(prompt, "You are an image prompt engineer. Output only English prompts, one per line. No numbers.");
       const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
@@ -154,12 +143,10 @@ Output format: ${count} English prompts, one per line. No numbers.`;
       });
     }
 
-    // အဆင့် ၁ အတွက်: ပုံပြင်စာသား ရေးထုတ်ခြင်း
     if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
     const selectedMins = parseInt(durationMinutes) || 1;
     const words = selectedMins * 105;
-
     const systemPrompt = "You are a professional Burmese storyteller. Write in natural Burmese script only. Absolutely NO numbers (1, 2, 3), NO English words, NO planning notes.";
 
     if (format === "series") {
@@ -201,7 +188,6 @@ Output format: ${count} English prompts, one per line. No numbers.`;
       });
 
     } else {
-      // Movie format
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
 ပြီးပြည့်စုံသော ရုပ်ရှင်ပုံပြင် ဇာတ်လမ်းစာသားကို မြန်မာဘာသာသက်သက်ဖြင့် စာပိုဒ်လိုက် ရေးပေးပါ။
 စာလုံးရေ ခန့်မှန်းခြေ: ${words} လုံး။
