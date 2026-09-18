@@ -18,6 +18,7 @@ function initRecapsView() {
 
   container.innerHTML = `
     <style>
+      /* အသံသရုပ်ဆောင် Box - Blue-Black Background & Clean Styling */
       #recap-voice-actor {
         background-color: #080e1a !important;
         border: 1.5px solid #1e3a8a !important;
@@ -264,6 +265,10 @@ function initRecapsView() {
             <textarea id="srt-edit-textarea" rows="5" style="font-family: monospace; font-size: 0.75rem;"></textarea>
             <button onclick="saveAndApplySrtEdit()" class="btn" style="background: #10b981; padding: 8px; font-size: 0.8rem;">💾 SRT သိမ်းဆည်းမည်</button>
           </div>
+
+          <button onclick="downloadSrtFile()" class="btn" style="background: #6366f1; padding: 10px; font-size: 0.85rem;">
+            <span>📥 Subtitle (.SRT) ဖိုင် Download ရယူမည်</span>
+          </button>
         </div>
 
         <!-- Final Export Card -->
@@ -624,6 +629,15 @@ function toggleSrtVisibility() {
   btn.style.background = isSrtVisible ? "#0284c7" : "#475569";
 }
 
+function downloadSrtFile() {
+  if (!window.currentSrtRaw) return alert("SRT ဒေတာ မရှိသေးပါ");
+  const blob = new Blob([window.currentSrtRaw], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "recap_subtitles.srt";
+  a.click();
+}
+
 function splitBurmeseIntoShortChunks(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
@@ -697,7 +711,7 @@ function parseSrtCues(srtText) {
   }).filter(Boolean);
 }
 
-// ဗီဒီယိုမှ မြင်ကွင်း Snapshot ၅ ပုံ အလိုအလျောက် ဖြတ်ယူခြင်း (Gemini Vision အတွက်)
+// Gemini Vision အတွက် မြင်ကွင်း Snapshots ၅ ပုံ ဖြတ်ထုတ်ခြင်း
 async function extractVideoKeyframes(file, count = 5) {
   return new Promise((resolve) => {
     const video = document.createElement("video");
@@ -839,20 +853,27 @@ async function handleGenerateRecap() {
     pPercent.innerText = "30%";
     pBar.style.width = "30%";
 
-    // အသံနှင့် မြင်ကွင်း Snapshots များကို တပြိုင်နက်တည်း အမြန်ဆုံး ဖြတ်ယူခြင်း
     const [{ audioBase64, duration }, frames] = await Promise.all([
       extractAudioOptimized(file),
       extractVideoKeyframes(file, 5)
     ]);
 
-    pTitle.innerText = "Gemini Vision က မြင်ကွင်း + အသံကို ကြည့်ရှုပြီး Recap ရေးနေပါသည်...";
+    // ဗီဒီယို၏ အစစ်အမှန် ကြာချိန် (ဥပမာ- ၃၆ စက္ကန့်) ကို တိကျစွာ ရယူခြင်း
+    const actualVideoDuration = Math.round(videoPlayer.duration || duration || 30);
+
+    pTitle.innerText = "Gemini Vision က ဗီဒီယိုအပြည့် Recap ရေးနေပါသည်...";
     pPercent.innerText = "60%";
     pBar.style.width = "60%";
 
     const scriptRes = await fetch("/api/generate-recap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ audioBase64, frames, tone, videoDuration: Math.round(duration) }),
+      body: JSON.stringify({ 
+        audioBase64, 
+        frames, 
+        tone, 
+        videoDuration: actualVideoDuration 
+      }),
     });
 
     const scriptData = await scriptRes.json();
@@ -892,8 +913,7 @@ async function handleGenerateRecap() {
     currentRecapAudio.volume = document.getElementById("vol-ai-slider").value / 100;
 
     currentRecapAudio.onloadedmetadata = () => {
-      const realAudioDuration = currentRecapAudio.duration || duration;
-      const accurateSrt = generateAccurateSrt(recapScript, realAudioDuration);
+      const accurateSrt = generateAccurateSrt(recapScript, actualVideoDuration);
       window.currentSrtRaw = accurateSrt;
       document.getElementById("srt-edit-textarea").value = accurateSrt;
       recapSrtCues = parseSrtCues(accurateSrt);
@@ -926,6 +946,11 @@ async function handleGenerateRecap() {
     videoPlayer.onseeking = () => {
       currentRecapAudio.currentTime = videoPlayer.currentTime;
       if (currentBgmAudio) currentBgmAudio.currentTime = videoPlayer.currentTime % currentBgmAudio.duration;
+    };
+
+    videoPlayer.onended = () => {
+      currentRecapAudio.pause();
+      if (currentBgmAudio) currentBgmAudio.pause();
     };
 
   } catch (err) {
