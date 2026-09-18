@@ -1,6 +1,5 @@
 const { GoogleGenAI } = require("@google/genai");
-const { Groq } = require("groq-sdk");
-const { toFile } = require("groq-sdk");
+const { Groq, toFile } = require("groq-sdk");
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
@@ -29,6 +28,54 @@ function buildSrtString(scriptText, totalDuration) {
   return srt;
 }
 
+// လက်ရှိ Gemini 3 Series Models များကို အစဉ်လိုက် ခေါ်ယူခြင်း
+async function runGeminiRecap(prompt) {
+  const geminiModels = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-2.5-flash"
+  ];
+
+  let lastGeminiError = null;
+
+  if (process.env.GEMINI_API_KEY) {
+    for (const model of geminiModels) {
+      try {
+        const response = await ai.models.generateContent({
+          model: model,
+          contents: prompt,
+        });
+        if (response && response.text) return response.text.trim();
+      } catch (err) {
+        lastGeminiError = err.message;
+        console.warn(`Gemini (${model}) failed:`, err.message);
+      }
+    }
+  } else {
+    lastGeminiError = "Vercel တွင် GEMINI_API_KEY မထည့်သွင်းရသေးပါ";
+  }
+
+  // Gemini အဆင်မပြေပါက Groq ရှိ သေချာပေါက် အလုပ်လုပ်သော llama-3.3-70b-versatile ဖြင့် Fallback ပြုလုပ်ခြင်း
+  try {
+    const gRes = await groq.chat.completions.create({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: "You are a movie recap storyteller. Output ONLY fluent Burmese script text." },
+        { role: "user", content: prompt }
+      ],
+      temperature: 0.7,
+    });
+    const text = gRes.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (groqErr) {
+    console.warn("Groq fallback also failed:", groqErr.message);
+  }
+
+  throw new Error(`Gemini Error (${lastGeminiError})`);
+}
+
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
@@ -44,24 +91,14 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // ၂။ LLM: ဗီဒီယို ကြာချိန် (Duration) နှင့် ကိုက်ညီသော စကားလုံးအရေအတွက် တွက်ချက်ခြင်း
+    // ၂။ LLM: Gemini 3.x Flash ဖြင့် Recap ရေးသားခြင်း
     const duration = videoDuration || 60;
     const targetWordCount = Math.round((duration / 60) * 135);
 
     const prompt = `You are a movie recap storyteller. Based on this audio transcript: "${transcript.text}", write a complete Burmese movie recap in a "${tone}" tone.
-IMPORTANT: The video is exactly ${duration} seconds long. You MUST write approximately ${targetWordCount} Burmese words so the voiceover covers the entire video without ending early. Output ONLY fluent Burmese script text.`;
+IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words so the voiceover covers the entire video without ending early. Output ONLY fluent Burmese script text without markdown.`;
 
-    let recapScript = "";
-    try {
-      const gRes = await ai.models.generateContent({ model: "gemini-2.5-flash", contents: prompt });
-      if (gRes && gRes.text) recapScript = gRes.text.trim();
-    } catch (e) {
-      const groqRes = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        messages: [{ role: "user", content: prompt }]
-      });
-      recapScript = groqRes.choices[0]?.message?.content?.trim();
-    }
+    const recapScript = await runGeminiRecap(prompt);
 
     // ၃။ TTS: Hugging Face Edge-TTS
     const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
