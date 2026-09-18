@@ -79,14 +79,14 @@ function initStoryView() {
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားခြင်း</span>
         </div>
 
-        <input type="text" id="s-topic-input" placeholder="ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ပါ (ဥပမာ- ရွာစွန်က သရဲမကြီး)..." style="font-size: 0.85rem;" />
+        <input type="text" id="s-topic-input" placeholder="ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ပါ (ဥပမာ- ရွာထိပ်က စုန်းမကြီး)..." style="font-size: 0.85rem;" />
 
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
           <div>
             <label style="font-size: 0.72rem; margin-bottom: 2px;">🎬 ဇာတ်လမ်းပုံစံ</label>
             <select id="s-format-select" style="height: 40px; font-size: 0.8rem;">
-              <option value="series" selected>📺 Series (၆ ပိုင်း)</option>
-              <option value="movie">🎬 Movie (တစ်ပိုင်း)</option>
+              <option value="series">📺 Series (၆ ပိုင်း)</option>
+              <option value="movie" selected>🎬 Movie (တစ်ပိုင်း)</option>
             </select>
           </div>
           <div>
@@ -195,7 +195,6 @@ function initStoryView() {
           <span style="font-weight: bold; color: #facc15; font-size: 0.9rem;"><span class="step-badge">အဆင့် ၄</span> 🎬 Motion Video Studio</span>
         </div>
 
-        <!-- Video Player Wrapper with Dynamic Ratio -->
         <div id="s-video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; max-height: 70vh; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
           <canvas id="s-motion-canvas" width="1280" height="720" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
 
@@ -242,7 +241,7 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- Subtitle (SRT) Settings (၇ မျိုး & ၈ မျိုး ⭕) -->
+        <!-- Subtitle (SRT) Settings -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
@@ -252,7 +251,6 @@ function initStoryView() {
             </div>
           </div>
 
-          <!-- စာသားအရောင် ၇ မျိုး -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 4px; display: block;">စာသားအရောင် (၇ မျိုး)</label>
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -266,7 +264,6 @@ function initStoryView() {
             </div>
           </div>
 
-          <!-- နောက်ခံအရောင် / စာသားအနားကွပ် ၈ မျိုး -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 4px; display: block;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
             <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
@@ -337,7 +334,6 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
-// Aspect Ratio ပြောင်းလဲခြင်း
 function setVideoRatio(ratio, el) {
   s_aspectRatio = ratio;
   document.querySelectorAll(".ratio-btn").forEach(b => b.classList.remove("active"));
@@ -363,7 +359,7 @@ function setVideoRatio(ratio, el) {
   renderMotionFrame(0, 60);
 }
 
-// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1 to 6 / Movie)
+// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (ဘယ်တုံ့ပြန်မှုမျိုးမဆို undefined မဖြစ်စေသော စနစ်)
 async function handleGenerateStoryScript() {
   const topic = document.getElementById("s-topic-input").value.trim();
   const format = document.getElementById("s-format-select").value;
@@ -394,17 +390,21 @@ async function handleGenerateStoryScript() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
-    if (format === "series") {
+    if (format === "series" && data.episodes && Array.isArray(data.episodes)) {
       s_seriesData = data;
       epContainer.style.display = "flex";
       selectStoryEpisode(1);
     } else {
       s_seriesData = null;
       epContainer.style.display = "none";
-      document.getElementById("s-current-label").innerText = `🎬 ${data.movie_title || topic} (ရုပ်ရှင်ဇာတ်လမ်းစာသား)`;
-      textarea.value = data.story_text;
-      document.getElementById("s-title-input").value = data.movie_title || topic;
-      updateSTitleText(data.movie_title || topic);
+      const storyTitle = data.movie_title || data.title || topic;
+      // မည်သည့် key ဖြစ်စေ စာသားကို တိုက်ရိုက်ရယူခြင်း (undefined လုံးဝ မပြစေရ)
+      const storyContent = data.story_text || data.script || data.story || data.text || (typeof data === 'string' ? data : "");
+
+      document.getElementById("s-current-label").innerText = `🎬 ${storyTitle} (ရုပ်ရှင်ဇာတ်လမ်းစာသား)`;
+      textarea.value = storyContent;
+      document.getElementById("s-title-input").value = storyTitle;
+      updateSTitleText(storyTitle);
     }
 
     btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
@@ -417,7 +417,6 @@ async function handleGenerateStoryScript() {
   }
 }
 
-// Episode ခလုတ် ရွေးချယ်ခြင်း
 function selectStoryEpisode(epNum) {
   if (!s_seriesData || !s_seriesData.episodes) return;
   s_currentEpNum = epNum;
@@ -431,8 +430,9 @@ function selectStoryEpisode(epNum) {
   }
 
   const ep = s_seriesData.episodes[epNum - 1];
+  const epText = ep.text || ep.story || ep.script || ep.content || "";
   document.getElementById("s-current-label").innerText = `📖 အပိုင်း ${epNum}: ${ep.title}`;
-  document.getElementById("s-script-textarea").value = ep.text;
+  document.getElementById("s-script-textarea").value = epText;
   document.getElementById("s-title-input").value = ep.title;
   updateSTitleText(ep.title);
 }
@@ -443,7 +443,7 @@ async function handlePromptToPhoto() {
   const btn = document.getElementById("btn-prompt-photo");
   const grid = document.getElementById("s-photo-preview-grid");
 
-  if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ သို့မဟုတ် ရိုက်ထည့်ပေးပါ");
+  if (!scriptText || scriptText === "undefined") return alert("စာသား အရင်ရေးပေးပါ သို့မဟုတ် ရိုက်ထည့်ပေးပါ");
 
   btn.disabled = true;
   btn.innerText = "⏳ Prompts နှင့် ဓာတ်ပုံများ ဆွဲယူနေပါသည်...";
@@ -499,7 +499,7 @@ async function handleTextToSpeech() {
   const btn = document.getElementById("btn-gen-audio");
   const audioEl = document.getElementById("s-audio-player");
 
-  if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ");
+  if (!scriptText || scriptText === "undefined") return alert("စာသား အရင်ရေးပေးပါ");
 
   btn.disabled = true;
   btn.innerText = "⏳ အသံဖိုင် ထုတ်နေသည်...";
@@ -536,7 +536,7 @@ async function handleTextToSpeech() {
   }
 }
 
-// 2.5D Pan & Zoom Render
+// 2.5D Pan & Zoom Render Loop
 function renderMotionFrame(time, duration) {
   const canvas = document.getElementById("s-motion-canvas");
   if (!canvas) return;
@@ -600,7 +600,7 @@ function toggleMotionPlayback() {
   }
 }
 
-// Overlays Controls
+// Overlays Controls (Title, Watermark, Subtitles)
 function toggleSTitle() {
   s_isTitleActive = !s_isTitleActive;
   const el = document.getElementById("s-drag-title");
@@ -806,7 +806,7 @@ function setupSTouchResize(targetId, handleId) {
   let isResizing = false;
   let startX, startY, startW, startH;
 
-  function onResizeStart(e) {
+  function onStart(e) {
     e.stopPropagation();
     isResizing = true;
     startX = e.touches ? e.touches[0].clientX : e.clientX;
@@ -815,7 +815,7 @@ function setupSTouchResize(targetId, handleId) {
     startH = target.clientHeight;
   }
 
-  function onResizeMove(e) {
+  function onMove(e) {
     if (!isResizing) return;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -823,12 +823,12 @@ function setupSTouchResize(targetId, handleId) {
     target.style.height = `${Math.max(20, startH + (clientY - startY))}px`;
   }
 
-  function onResizeEnd() { isResizing = false; }
+  function onEnd() { isResizing = false; }
 
-  handle.addEventListener("touchstart", onResizeStart, { passive: false });
-  window.addEventListener("touchmove", onResizeMove, { passive: false });
-  window.addEventListener("touchend", onResizeEnd);
-  handle.addEventListener("mousedown", onResizeStart);
+  handle.addEventListener("touchstart", onStart, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onEnd);
+  handle.addEventListener("mousedown", onStart);
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onEnd);
 }
