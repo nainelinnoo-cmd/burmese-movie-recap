@@ -1,8 +1,8 @@
 const { GoogleGenAI } = require("@google/genai");
 const { Groq } = require("groq-sdk");
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
 // ၁။ Google Translate TTS
@@ -90,14 +90,9 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, voice); } catch (e) { return await fetchGoogleTTSSafe(text); }
 }
 
-// ၃။ Gemini Flash & Multi-Model Engine (JSON Output)
+// ၃။ AI Model Engine (Gemini & Groq Fallback)
 async function runStoryAI(prompt) {
-  const GEMINI_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-3.5-flash"
-  ];
+  const GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.5-flash"];
 
   if (process.env.GEMINI_API_KEY) {
     for (const m of GEMINI_MODELS) {
@@ -112,7 +107,6 @@ async function runStoryAI(prompt) {
     }
   }
 
-  // Groq Fallback
   if (process.env.GROQ_API_KEY) {
     const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"];
     for (const gm of groqModels) {
@@ -120,7 +114,7 @@ async function runStoryAI(prompt) {
         const gRes = await groq.chat.completions.create({
           model: gm,
           messages: [
-            { role: "system", content: "You output strictly valid JSON only. Output Burmese text purely in Burmese script without English notes." },
+            { role: "system", content: "You output strictly valid JSON only. Output pure Burmese text without English notes." },
             { role: "user", content: prompt }
           ],
           response_format: { type: "json_object" }
@@ -131,52 +125,16 @@ async function runStoryAI(prompt) {
     }
   }
 
-  // Pollinations Fallback
-  try {
-    const res = await fetch("https://text.pollinations.ai/", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        messages: [
-          { role: "system", content: "Output strictly valid JSON only without markdown formatting." },
-          { role: "user", content: prompt }
-        ],
-        jsonMode: true
-      })
-    });
-    if (res.ok) {
-      const text = await res.text();
-      if (text) return text.trim();
-    }
-  } catch (e) {}
-
-  throw new Error("AI ဆာဗာ ခေတ္တမအားလပ်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
-}
-
-function cleanBurmeseStoryText(str) {
-  if (!str) return "";
-  let t = str.replace(/\\n/g, "\n").replace(/\\"/g, '"');
-  // AI ၏ English Meta / Notes များကို ဖယ်ရှားခြင်း
-  t = t.replace(/(?:(?:\d+\s+words|Let's|Count|Words?|Note|Here\s+is|Sure|Explanation)[\s\S]*)/i, "").trim();
-  const lines = t.split("\n");
-  const filtered = lines.filter(l => {
-    const trimmed = l.trim();
-    if (!trimmed) return false;
-    const isPureEng = /^[A-Za-z0-9\s.,'":;!?()\-–—_#*]{8,}$/.test(trimmed);
-    return !isPureEng;
-  });
-  return filtered.join("\n").trim() || t;
+  throw new Error("AI ဆာဗာ ချိတ်ဆက်မှု အဆင်မပြေပါ။ ခေတ္တစောင့်ပြီး ထပ်ကြိုးစားပါ။");
 }
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { action, topic, genre, format, durationMinutes, scriptText, voice, photoCount } = req.body;
+    const { topic, genre, format, durationMinutes, fetchAudioOnly, scriptText, voice } = req.body;
 
-    // အသံဖိုင် သီးသန့် ထုတ်ယူခြင်း (Episode ပြောင်းချိန် သို့မဟုတ် အသံသီးသန့်ခေါ်ချိန်)
-    if (action === "generate_audio" || req.body.fetchAudioOnly) {
-      if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
+    if (fetchAudioOnly && scriptText) {
       const audioBase64 = await fetchAudioSafe(scriptText, voice);
       return res.status(200).json({ audioBase64 });
     }
@@ -185,14 +143,28 @@ module.exports = async (req, res) => {
 
     const selectedMins = parseInt(durationMinutes) || 1;
     const words = selectedMins * 105;
-    const count = parseInt(photoCount) || 4;
 
-    if (format === "series") {
-      const prompt = `You are a Burmese storyteller.
-Write a continuous 6-episode story series in Burmese for topic: "${topic}" (${genre}).
+    if (format === "movie") {
+      const prompt = `Write a complete movie story script in Burmese for topic: "${topic}" (${genre}).
+Length: approximately ${words} Burmese words. Break into short spoken phrases.
+Also generate 4 vivid, cinematic image prompts in English describing key visual scenes.
+Output strictly valid JSON:
+{
+  "movie_title": "${topic}",
+  "story_text": "ဇာတ်လမ်းစာသား...",
+  "image_prompts": [
+    "cinematic scene 1 description...",
+    "cinematic scene 2 description...",
+    "cinematic scene 3 description...",
+    "cinematic scene 4 description..."
+  ]
+}`;
+      const jsonStr = await runStoryAI(prompt);
+      return res.status(200).json(JSON.parse(jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim()));
+    } else {
+      const prompt = `Write a continuous 6-episode story series in Burmese for topic: "${topic}" (${genre}).
 Each episode MUST contain around ${words} Burmese words.
-For EACH episode, also generate ${count} cinematic English image descriptions for AI photo generation.
-CRITICAL: Burmese story text MUST be in pure Burmese script. Absolutely NO English words in story text.
+For EACH episode, provide 3 cinematic English image prompts for AI visual scene generation.
 Output strictly valid JSON:
 {
   "series_title": "${topic}",
@@ -201,87 +173,46 @@ Output strictly valid JSON:
       "ep": 1,
       "title": "အပိုင်း ၁ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     },
     {
       "ep": 2,
       "title": "အပိုင်း ၂ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     },
     {
       "ep": 3,
       "title": "အပိုင်း ၃ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     },
     {
       "ep": 4,
       "title": "အပိုင်း ၄ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     },
     {
       "ep": 5,
       "title": "အပိုင်း ၅ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     },
     {
       "ep": 6,
       "title": "အပိုင်း ၆ ခေါင်းစဉ်",
       "text": "ဇာတ်လမ်းစာသား...",
-      "image_prompts": [${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} description..."`).join(",")}]
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
     }
   ]
 }`;
-
       const jsonStr = await runStoryAI(prompt);
-      let parsed = JSON.parse(jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim());
-
-      if (Array.isArray(parsed.episodes)) {
-        parsed.episodes = parsed.episodes.map((ep, i) => ({
-          ep: ep.ep || i + 1,
-          title: ep.title || `အပိုင်း ${i + 1}`,
-          text: cleanBurmeseStoryText(ep.text || ep.story || ""),
-          image_prompts: Array.isArray(ep.image_prompts) && ep.image_prompts.length > 0
-            ? ep.image_prompts.slice(0, count)
-            : Array.from({ length: count }, (_, pi) => `cinematic scene ${pi + 1} ultra realistic lighting 8k`)
-        }));
-      }
-
-      return res.status(200).json(parsed);
-
-    } else {
-      // Movie Format (တစ်ပိုင်းတည်း)
-      const prompt = `You are a Burmese storyteller.
-Write a complete movie storytelling script in Burmese for topic: "${topic}" (${genre}).
-Length: approximately ${words} Burmese words. Break into short phrases using commas.
-Also generate ${count} cinematic English image descriptions for AI photo generation.
-CRITICAL: The story_text MUST be in pure Burmese script without any English notes or reasoning.
-Output strictly valid JSON:
-{
-  "movie_title": "${topic}",
-  "story_text": "မြန်မာလို ဇာတ်လမ်းစာသား အပြည့်အစုံ...",
-  "image_prompts": [
-    ${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} visual description..."`).join(",\n    ")}
-  ]
-}`;
-
-      const jsonStr = await runStoryAI(prompt);
-      let parsed = JSON.parse(jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim());
-
-      return res.status(200).json({
-        movie_title: parsed.movie_title || topic,
-        story_text: cleanBurmeseStoryText(parsed.story_text || parsed.story || ""),
-        image_prompts: Array.isArray(parsed.image_prompts) && parsed.image_prompts.length > 0
-          ? parsed.image_prompts.slice(0, count)
-          : Array.from({ length: count }, (_, pi) => `cinematic scene ${pi + 1} ultra realistic lighting 8k`)
-      });
+      return res.status(200).json({ series: JSON.parse(jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim()) });
     }
 
   } catch (err) {
     console.error("Story API Error:", err);
-    return res.status(500).json({ error: err.message || "လုပ်ဆောင်မှု မအောင်မြင်ပါ" });
+    return res.status(500).json({ error: err.message || "ဇာတ်လမ်း ဖန်တီးမှု မအောင်မြင်ပါ" });
   }
 };
