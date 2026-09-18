@@ -4,7 +4,6 @@ const { Groq, toFile } = require("groq-sdk");
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 
-// Gemini Flash မော်ဒယ်များထံ အသံစာသား + ဗီဒီယိုမြင်ကွင်း ဓာတ်ပုံများ (Multimodal) ပေးပို့ခြင်း
 async function runGeminiRecapFast(prompt, frames = []) {
   const ACTIVE_MODELS = [
     "gemini-2.5-flash",
@@ -14,7 +13,6 @@ async function runGeminiRecapFast(prompt, frames = []) {
     "gemini-3.6-flash"
   ];
 
-  // Multimodal Parts တည်ဆောက်ခြင်း (Prompt Text + Visual Snapshots)
   const contents = [{ text: prompt }];
 
   if (Array.isArray(frames) && frames.length > 0) {
@@ -44,7 +42,7 @@ async function runGeminiRecapFast(prompt, frames = []) {
     }
   }
 
-  // Fallback to Groq Llama 3.3 (Text-Only)
+  // Fallback to Groq Llama 3.3
   const gRes = await groq.chat.completions.create({
     model: "llama-3.3-70b-versatile",
     messages: [
@@ -63,7 +61,7 @@ module.exports = async (req, res) => {
     const { audioBase64, frames, tone, videoDuration } = req.body;
     if (!audioBase64) return res.status(400).json({ error: "အသံဖိုင်ဒေတာ မပါဝင်ပါ" });
 
-    // Step 1: STT Transcription via Groq Whisper
+    // Step 1: STT Transcription
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const file = await toFile(audioBuffer, "audio.wav");
     const transcript = await groq.audio.transcriptions.create({
@@ -71,22 +69,21 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // Step 2: ဗီဒီယိုကြာချိန်နှင့် ကိုက်ညီအောင် စကားလုံးအရေအတွက် တွက်ချက်ခြင်း (၁ မိနစ်လျှင် ၁၂၅ လုံးနှုန်း)
-    const duration = videoDuration || 60;
-    const targetWordCount = Math.max(120, Math.round((duration / 60) * 125));
+    // Step 2: တိကျသော စကားလုံးအရေအတွက် တွက်ချက်ခြင်း (ဗီဒီယို မကျော်စေရန် ၁ မိနစ်လျှင် ၁၀၅ လုံးနှုန်းထားသည်)
+    const duration = Math.max(10, parseInt(videoDuration) || 30);
+    const targetWordCount = Math.max(15, Math.round((duration / 60) * 105));
 
     const prompt = `You are an expert movie recap storyteller.
-I have provided:
-1. Audio transcript of the video: "${transcript.text}"
-2. Visual snapshots taken throughout the video scene showing what is happening visually.
+Audio transcript: "${transcript.text}".
+Visual snapshots are attached showing the scene.
 
-CRITICAL INSTRUCTIONS:
-- Carefully observe BOTH the visual snapshots (character actions, funny expressions, fighting, movement, who is doing what) AND the audio transcript.
-- If characters are performing actions without speaking, describe those visual scenes vividly.
-- The video is EXACTLY ${duration} seconds long (about ${Math.floor(duration / 60)} minutes and ${Math.round(duration % 60)} seconds).
-- You MUST write approximately ${targetWordCount} Burmese words in a "${tone}" tone so the voiceover covers the entire video length without finishing early.
-- Break thoughts into short, clean phrases using commas and Burmese punctuation.
-- Output ONLY the spoken Burmese script text without markdown, titles, or asterisks.`;
+CRITICAL TIMING & LENGTH RULE:
+- The video is EXACTLY ${duration} seconds long.
+- You MUST write STRICTLY between ${Math.max(10, targetWordCount - 8)} and ${targetWordCount} Burmese words.
+- DO NOT EXCEED ${targetWordCount} words. If you write more words, the voiceover will exceed the video length.
+- Tone: "${tone}".
+- Break sentences with commas so speech pace is steady and natural.
+- Output ONLY the spoken Burmese script text without titles, markdown, quotes, or asterisks.`;
 
     const recapScript = await runGeminiRecapFast(prompt, frames);
 
