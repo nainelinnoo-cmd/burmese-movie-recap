@@ -2,6 +2,7 @@ let storySeriesData = null;
 let currentEpNumber = 1;
 let currentStoryVoice = "edge-thiha";
 let storyProgressInterval = null;
+let currentStorySrtCues = [];
 
 function initStoryView() {
   const container = document.getElementById("view-story");
@@ -12,15 +13,13 @@ function initStoryView() {
         <input type="text" id="story-topic" placeholder="ဥပမာ- ရွာစွန်က သရဲမကြီး" />
       </div>
 
-      <!-- Duration (Minutes) & Format Selection -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
-          <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">⏱️ ဇာတ်လမ်း ကြာချိန်</label>
+          <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">⏱️ Ep တစ်ခု ကြာချိန်</label>
           <select id="story-duration" style="height: 44px;">
-            <option value="1">၁ မိနစ် (တိုတိုရှင်းရှင်း)</option>
-            <option value="2">၂ မိနစ် (ပုံမှန်)</option>
-            <option value="3" selected>၃ မိနစ် (အလတ်စား)</option>
-            <option value="5">၅ မိနစ် (ဇာတ်လမ်းရှည်)</option>
+            <option value="1" selected>၁ မိနစ် (6 Ep = ၆ မိနစ်)</option>
+            <option value="2">၂ မိနစ် (6 Ep = ၁၂ မိနစ်)</option>
+            <option value="3">၃ မိနစ် (6 Ep = ၁၈ မိနစ်)</option>
           </select>
         </div>
         <div>
@@ -32,15 +31,14 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- Genre & Voice -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🎭 အမျိုးအစား</label>
           <select id="story-genre" style="height: 44px;">
             <option value="horror">👻 သရဲ / ထိတ်လန့်ဖွယ်</option>
             <option value="mystery">🔍 လျှို့ဝှက်သည်းဖို</option>
             <option value="drama">💔 ဘဝဇာတ်လမ်း</option>
-            <option value="motivation">💪 ခွန်အားဖြည့်</option>
+            <option value="motivation">💪 စိတ်ဓာတ်ခွန်အား</option>
           </select>
         </div>
         <div>
@@ -65,7 +63,6 @@ function initStoryView() {
         <div style="width: 100%; height: 8px; background: #0f172a; border-radius: 6px; overflow: hidden; margin-bottom: 8px;">
           <div id="story-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #0ea5e9); transition: width 0.3s ease;"></div>
         </div>
-        <div style="font-size: 0.75rem; color: #94a3b8;">🧠 Gemini 2.5-flash & Groq Engine ဖြင့် စနစ်တကျ ရေးသားနေပါသည်</div>
       </div>
 
       <div id="story-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
@@ -93,7 +90,28 @@ function initStoryView() {
         <button id="ep-audio-btn" onclick="playCurrentStoryAudio()" class="btn" style="background: #10b981; color: white;">
           <span id="audio-btn-icon">🔊</span> <span id="audio-btn-text">ဤ Episode အသံကို ဖွင့်မည်</span>
         </button>
+
+        <!-- Story Subtitle Display Box -->
+        <div id="story-live-subtitle" style="display: none; background: rgba(0,0,0,0.8); color: #facc15; padding: 10px; border-radius: 8px; text-align: center; font-size: 16px; font-weight: bold;"></div>
+
         <audio id="story-audio-player" controls style="width: 100%; display: none; margin-top: 6px;"></audio>
+
+        <!-- Story SRT Edit & Download Panel -->
+        <div class="card" style="display: flex; flex-direction: column; gap: 8px; background: #131d31;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">📝 ဤ Episode ၏ SRT Subtitle</span>
+            <button onclick="toggleStorySrtEdit()" class="btn" style="width: auto; padding: 4px 8px; font-size: 0.75rem; background: #f59e0b; color: #000;">✏️ Edit SRT</button>
+          </div>
+
+          <div id="story-srt-edit-box" style="display: none; flex-direction: column; gap: 6px;">
+            <textarea id="story-srt-textarea" rows="5" style="font-family: monospace; font-size: 0.75rem;"></textarea>
+            <button onclick="saveStorySrtEdit()" class="btn" style="background: #10b981; padding: 8px; font-size: 0.8rem;">💾 SRT အပြောင်းအလဲ သိမ်းဆည်းမည်</button>
+          </div>
+
+          <button onclick="downloadStorySrtFile()" class="btn" style="background: #6366f1; padding: 10px; font-size: 0.85rem;">
+            <span>📥 Episode Subtitle (.SRT) Download</span>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -106,11 +124,19 @@ function setupAudioStateListeners() {
   const audioBtn = document.getElementById("ep-audio-btn");
   const audioIcon = document.getElementById("audio-btn-icon");
   const audioText = document.getElementById("audio-btn-text");
+  const liveSub = document.getElementById("story-live-subtitle");
 
   audioPlayer.addEventListener("play", () => {
     audioBtn.style.background = "linear-gradient(90deg, #0ea5e9, #6366f1)";
     audioIcon.innerText = "⏳";
     audioText.innerText = "အသံနားထောင်နေသည်...";
+    liveSub.style.display = "block";
+  });
+
+  audioPlayer.addEventListener("timeupdate", () => {
+    const curr = audioPlayer.currentTime;
+    const cue = currentStorySrtCues.find(c => curr >= c.start && curr <= c.end);
+    liveSub.innerText = cue ? cue.text : "";
   });
 
   audioPlayer.addEventListener("pause", () => {
@@ -123,12 +149,82 @@ function setupAudioStateListeners() {
     audioBtn.style.background = "#10b981";
     audioIcon.innerText = "🔊";
     audioText.innerText = "အသံဖိုင် ပြန်ဖွင့်မည်";
+    liveSub.style.display = "none";
   });
 }
 
 function handleFormatChange() {
   const format = document.getElementById("story-format").value;
   document.getElementById("story-btn-text").innerText = format === "series" ? "📺 ဇာတ်လမ်းတွဲ (Ep 1 to 6) ဖန်တီးမည်" : "🎬 Movie (တစ်ပိုင်းတည်း) ဖန်တီးမည်";
+}
+
+function generateSrtFromTextAndAudio(text, totalDuration) {
+  const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
+  const cleaned = sentences.map(s => s.trim()).filter(Boolean);
+  const timePerCue = totalDuration / (cleaned.length || 1);
+
+  let srt = "";
+  cleaned.forEach((sentence, idx) => {
+    const startSec = idx * timePerCue;
+    const endSec = Math.min((idx + 1) * timePerCue, totalDuration);
+
+    const fmt = (s) => {
+      const hrs = Math.floor(s / 3600).toString().padStart(2, "0");
+      const mins = Math.floor((s % 3600) / 60).toString().padStart(2, "0");
+      const secs = Math.floor(s % 60).toString().padStart(2, "0");
+      const ms = Math.floor((s % 1) * 1000).toString().padStart(3, "0");
+      return `${hrs}:${mins}:${secs},${ms}`;
+    };
+
+    srt += `${idx + 1}\n${fmt(startSec)} --> ${fmt(endSec)}\n${sentence}\n\n`;
+  });
+  return srt;
+}
+
+function parseStorySrt(srtText) {
+  if (!srtText) return [];
+  const blocks = srtText.trim().split(/\n\s*\n/);
+  return blocks.map(block => {
+    const lines = block.split("\n");
+    if (lines.length >= 3) {
+      const timeParts = lines[1].split(" --> ");
+      const parseSeconds = (t) => {
+        const [h, m, s] = t.split(":");
+        const [sec, ms] = s.split(",");
+        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
+      };
+      return {
+        start: parseSeconds(timeParts[0]),
+        end: parseSeconds(timeParts[1]),
+        text: lines.slice(2).join(" ")
+      };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+function toggleStorySrtEdit() {
+  const box = document.getElementById("story-srt-edit-box");
+  box.style.display = box.style.display === "none" ? "flex" : "none";
+}
+
+function saveStorySrtEdit() {
+  const newSrt = document.getElementById("story-srt-textarea").value;
+  if (storySeriesData && storySeriesData.episodes) {
+    storySeriesData.episodes[currentEpNumber - 1].srtText = newSrt;
+  }
+  currentStorySrtCues = parseStorySrt(newSrt);
+  alert("SRT ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!");
+}
+
+function downloadStorySrtFile() {
+  const srtText = document.getElementById("story-srt-textarea").value;
+  if (!srtText) return alert("SRT ဒေတာ မရှိသေးပါ");
+  const blob = new Blob([srtText], { type: "text/plain;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = `Story_Ep_${currentEpNumber}.srt`;
+  a.click();
 }
 
 async function handleGenerateStory() {
@@ -157,7 +253,7 @@ async function handleGenerateStory() {
   let pct = 15;
   pBar.style.width = `${pct}%`;
   pPercent.innerText = `${pct}%`;
-  pTitle.innerText = "AI ဇာတ်လမ်း ဖွဲ့စည်းရေးသားနေပါသည်...";
+  pTitle.innerText = "Gemini 2.5-flash က Ep 1 မှ Ep 6 ထိ အပြည့်အစုံ ရေးသားနေပါသည်...";
 
   storyProgressInterval = setInterval(() => {
     if (pct < 85) {
@@ -189,7 +285,7 @@ async function handleGenerateStory() {
       storySeriesData = data.series;
       document.getElementById("series-ep-buttons").style.display = "grid";
       document.getElementById("story-main-title").innerText = storySeriesData.series_title || topic;
-      document.getElementById("story-format-badge").innerText = `အခန်းဆက် ၆ ပိုင်း (${duration} မိနစ်စာ)`;
+      document.getElementById("story-format-badge").innerText = `အခန်းဆက် ၆ ပိုင်း (Ep တစ်ခု ${duration} မိနစ်နှုန်း)`;
       selectEpisode(1);
     } else {
       storySeriesData = null;
@@ -228,8 +324,14 @@ function selectEpisode(epNum) {
   const audioPlayer = document.getElementById("story-audio-player");
   audioPlayer.pause();
   audioPlayer.style.display = epData.audioBase64 ? "block" : "none";
+
   if (epData.audioBase64) {
     audioPlayer.src = URL.createObjectURL(new Blob([Uint8Array.from(atob(epData.audioBase64), c => c.charCodeAt(0))], { type: "audio/mp3" }));
+    document.getElementById("story-srt-textarea").value = epData.srtText || "";
+    currentStorySrtCues = parseStorySrt(epData.srtText || "");
+  } else {
+    document.getElementById("story-srt-textarea").value = "";
+    currentStorySrtCues = [];
   }
 }
 
@@ -265,10 +367,22 @@ async function playCurrentStoryAudio() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error);
 
-    if (format === "series") storySeriesData.episodes[currentEpNumber - 1].audioBase64 = data.audioBase64;
-    audioPlayer.src = URL.createObjectURL(new Blob([Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))], { type: "audio/mp3" }));
+    const audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
+    const audioUrl = URL.createObjectURL(audioBlob);
+    audioPlayer.src = audioUrl;
     audioPlayer.style.display = "block";
-    audioPlayer.play();
+
+    audioPlayer.onloadedmetadata = () => {
+      const realDuration = audioPlayer.duration || 60;
+      const srt = generateSrtFromTextAndAudio(textToRead, realDuration);
+      if (format === "series") {
+        storySeriesData.episodes[currentEpNumber - 1].srtText = srt;
+        storySeriesData.episodes[currentEpNumber - 1].audioBase64 = data.audioBase64;
+      }
+      document.getElementById("story-srt-textarea").value = srt;
+      currentStorySrtCues = parseStorySrt(srt);
+      audioPlayer.play();
+    };
 
   } catch (err) {
     alert("အသံဖန်တီးမှု မအောင်မြင်ပါ: " + err.message);
