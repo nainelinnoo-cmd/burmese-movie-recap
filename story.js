@@ -91,12 +91,10 @@ function initStoryView() {
           <span id="audio-btn-icon">🔊</span> <span id="audio-btn-text">ဤ Episode အသံကို ဖွင့်မည်</span>
         </button>
 
-        <!-- Story Subtitle Display Box -->
         <div id="story-live-subtitle" style="display: none; background: rgba(0,0,0,0.8); color: #facc15; padding: 10px; border-radius: 8px; text-align: center; font-size: 16px; font-weight: bold;"></div>
 
         <audio id="story-audio-player" controls style="width: 100%; display: none; margin-top: 6px;"></audio>
 
-        <!-- Story SRT Edit & Download Panel -->
         <div class="card" style="display: flex; flex-direction: column; gap: 8px; background: #131d31;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">📝 ဤ Episode ၏ SRT Subtitle</span>
@@ -253,7 +251,7 @@ async function handleGenerateStory() {
   let pct = 15;
   pBar.style.width = `${pct}%`;
   pPercent.innerText = `${pct}%`;
-  pTitle.innerText = "Gemini 2.5-flash က Ep 1 မှ Ep 6 ထိ အပြည့်အစုံ ရေးသားနေပါသည်...";
+  pTitle.innerText = "Gemini Flash မော်ဒယ်များဖြင့် ရေးသားနေပါသည်...";
 
   storyProgressInterval = setInterval(() => {
     if (pct < 85) {
@@ -300,7 +298,7 @@ async function handleGenerateStory() {
     clearInterval(storyProgressInterval);
     pContainer.style.display = "none";
     errorBox.style.display = "block";
-    errorBox.innerText = `❌ Error: ${err.message}`;
+    errorBox.innerHTML = `❌ Error: ${err.message}`;
   } finally {
     generateBtn.disabled = false;
     generateBtn.style.opacity = "1";
