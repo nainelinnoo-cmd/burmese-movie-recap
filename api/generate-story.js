@@ -1,5 +1,7 @@
+const { GoogleGenAI } = require("@google/genai");
 const { Groq } = require("groq-sdk");
 
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
@@ -88,64 +90,58 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, voice); } catch (e) { return await fetchGoogleTTSSafe(text); }
 }
 
-// ၃။ AI Engine (Gemini Official Direct API + Groq + Pollinations)
-async function callOfficialGemini(prompt, isJson = false) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) return null;
+// ၃။ Recaps Studio ကဲ့သို့ အလုပ်လုပ်သော Gemini Flash & Multi-Model Engine
+async function runStoryAI(prompt, isJson = false) {
+  const GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-3.5-flash"
+  ];
 
-  const validModels = ["gemini-1.5-flash", "gemini-2.0-flash", "gemini-1.5-pro"];
-
-  for (const model of validModels) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
-      const payload = {
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: isJson ? { responseMimeType: "application/json" } : {}
-      };
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      });
-      if (res.ok) {
-        const data = await res.json();
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) return text.trim();
+  if (process.env.GEMINI_API_KEY) {
+    for (const m of GEMINI_MODELS) {
+      try {
+        const config = isJson ? { responseMimeType: "application/json" } : {};
+        const response = await ai.models.generateContent({
+          model: m,
+          contents: prompt,
+          config: config
+        });
+        if (response && response.text) return response.text.trim();
+      } catch (e) {
+        console.warn(`Gemini (${m}) failed, trying fallback...`);
       }
-    } catch (e) {}
+    }
   }
-  return null;
-}
 
-async function callGroqFallback(prompt, isJson = false) {
-  if (!process.env.GROQ_API_KEY) return null;
-  const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"];
-
-  for (const m of groqModels) {
-    try {
-      const gRes = await groq.chat.completions.create({
-        model: m,
-        messages: [
-          { role: "system", content: isJson ? "Output valid JSON only." : "Output ONLY pure Burmese story text. Do not output English." },
-          { role: "user", content: prompt }
-        ],
-        response_format: isJson ? { type: "json_object" } : undefined
-      });
-      const content = gRes.choices[0]?.message?.content?.trim();
-      if (content) return content;
-    } catch (err) {}
+  // Groq Fallback
+  if (process.env.GROQ_API_KEY) {
+    const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"];
+    for (const gm of groqModels) {
+      try {
+        const gRes = await groq.chat.completions.create({
+          model: gm,
+          messages: [
+            { role: "system", content: isJson ? "Output valid JSON only." : "Output ONLY pure Burmese story text." },
+            { role: "user", content: prompt }
+          ],
+          response_format: isJson ? { type: "json_object" } : undefined
+        });
+        const content = gRes.choices[0]?.message?.content?.trim();
+        if (content) return content;
+      } catch (err) {}
+    }
   }
-  return null;
-}
 
-async function callPollinationsAI(prompt, isJson = false) {
+  // Pollinations AI Fallback (Always Online)
   try {
     const res = await fetch("https://text.pollinations.ai/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [
-          { role: "system", content: isJson ? "Output strictly valid JSON only." : "Output ONLY pure Burmese story text." },
+          { role: "system", content: isJson ? "Output valid JSON only." : "Output ONLY pure Burmese story text." },
           { role: "user", content: prompt }
         ],
         jsonMode: isJson
@@ -156,46 +152,36 @@ async function callPollinationsAI(prompt, isJson = false) {
       if (text) return text.trim();
     }
   } catch (e) {}
-  return null;
+
+  throw new Error("AI ဆာဗာများ ခေတ္တမအားလပ်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
 }
 
-async function runReliableStoryAI(prompt, isJson = false) {
-  let result = await callOfficialGemini(prompt, isJson);
-  if (result) return result;
-  result = await callGroqFallback(prompt, isJson);
-  if (result) return result;
-  result = await callPollinationsAI(prompt, isJson);
-  if (result) return result;
-  throw new Error("AI မော်ဒယ်များ ခေတ္တ အလုပ်မလုပ်နိုင်ပါ။ ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
-}
-
-// အင်္ဂလိပ်စာ ရှင်းလင်းချက်များကို အမြစ်ပြတ် ဖယ်ရှားပြီး မြန်မာစာသက်သက် သန့်စင်ပေးသည့် စနစ်
-function filterPureBurmeseStory(rawText) {
+// မြန်မာစာကို မပျောက်ပျက်စေဘဲ အင်္ဂလိပ်စကားပြော စာကြောင်းများကိုသာ သန့်စင်ပေးသည့် စနစ်
+function cleanBurmeseStory(rawText) {
   if (!rawText) return "";
   let text = rawText.replace(/```json/gi, "").replace(/```/g, "").trim();
 
   try {
     const parsed = JSON.parse(text);
     if (typeof parsed === "object") {
-      text = parsed.story_text || parsed.story || parsed.script || parsed.text || Object.values(parsed)[0] || text;
+      text = parsed.story_text || parsed.story || parsed.script || parsed.text || Object.values(parsed).join("\n") || text;
     }
   } catch (e) {}
 
   text = text.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/^"/, "").replace(/"$/, "");
 
-  // အင်္ဂလိပ်လို ပါဝင်သော စာကြောင်းများ (ဥပမာ- "We need about 105 words...") ကို ဖယ်ထုတ်ခြင်း
+  // အင်္ဂလိပ်စာ သီးသန့်ဖြစ်နေသော စာကြောင်းများ (ဥပမာ- "We need about 105 words...") ကိုသာ ဖယ်ရှားခြင်း
   const lines = text.split("\n");
-  const filteredLines = lines.filter(line => {
-    const trimmed = line.trim();
-    if (!trimmed) return true;
-    const engCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
-    const myanCount = (trimmed.match(/[\u1000-\u109F]/g) || []).length;
-    // အင်္ဂလိပ်စာလုံး ပိုများနေသော စာကြောင်းဖြစ်ပါက လုံးဝ ဖယ်ထုတ်မည်
-    if (engCount > 8 && engCount > myanCount) return false;
-    return true;
+  const filtered = lines.filter(line => {
+    const t = line.trim();
+    if (!t) return false;
+    // အကယ်၍ ထိုစာကြောင်းသည် အင်္ဂလိပ်စာ/သင်္ကေတ သီးသန့်ဖြစ်နေပါက ဖယ်ထုတ်မည်
+    const isPureEnglish = /^[A-Za-z0-9\s.,'":;!?()\-–—_#*]+$/.test(t);
+    return !isPureEnglish;
   });
 
-  return filteredLines.join("\n").trim();
+  const result = filtered.join("\n").trim();
+  return result || text.trim();
 }
 
 module.exports = async (req, res) => {
@@ -211,22 +197,22 @@ module.exports = async (req, res) => {
       return res.status(200).json({ audioBase64 });
     }
 
-    // အဆင့် ၂: စာသားမှ ဓာတ်ပုံဆွဲရန် Prompts များ ထုတ်ယူခြင်း (ရွေးချယ်ထားသော ပုံအရေအတွက်အတိုင်း)
+    // အဆင့် ၂: စာသားမှ ဓာတ်ပုံဆွဲရန် Prompts များ ထုတ်ယူခြင်း
     if (action === "generate_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
 
-      const prompt = `Based on this story snippet: "${scriptText.substring(0, 450)}", create exactly ${count} distinct, highly detailed, cinematic scene descriptions in English for AI image generation.
+      const prompt = `Based on this story snippet: "${scriptText.substring(0, 450)}", create exactly ${count} distinct cinematic scene visual descriptions in English for AI image generation.
 Output strictly valid JSON with an array of ${count} strings:
 {
   "prompts": [
-    ${Array.from({ length: count }, (_, i) => `"cinematic scene ${i + 1} detailed visual description..."`).join(",\n    ")}
+    ${Array.from({ length: count }, (_, i) => `"cinematic 8k scene ${i + 1} detailed visual description..."`).join(",\n    ")}
   ]
 }`;
-      const jsonStr = await runReliableStoryAI(prompt, true);
+      const jsonStr = await runStoryAI(prompt, true);
       let parsedPrompts = [];
       try {
-        const pObj = JSON.parse(jsonStr);
+        const pObj = JSON.parse(jsonStr.replace(/```json/gi, "").replace(/```/g, "").trim());
         parsedPrompts = pObj.prompts || Object.values(pObj);
       } catch (e) {
         parsedPrompts = Array.from({ length: count }, (_, i) => `cinematic 8k scene ${i + 1} ultra realistic lighting atmospheric`);
@@ -234,7 +220,7 @@ Output strictly valid JSON with an array of ${count} strings:
       return res.status(200).json({ prompts: parsedPrompts.slice(0, count) });
     }
 
-    // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1-6 သို့မဟုတ် Movie)
+    // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Movie သို့မဟုတ် Series)
     if (action === "generate_script" || topic) {
       if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
       const selectedMins = parseInt(durationMinutes) || 1;
@@ -243,67 +229,54 @@ Output strictly valid JSON with an array of ${count} strings:
       if (format === "series") {
         const prompt = `Write a continuous 6-episode story series in 100% pure Burmese about "${topic}" (${genre}).
 Each episode MUST contain around ${words} Burmese words.
-STRICT RULE: Do NOT output ANY English explanation or notes.
-Output strictly valid JSON:
-{
-  "series_title": "${topic}",
-  "episodes": [
-    {"ep": 1, "title": "အပိုင်း ၁", "text": "မြန်မာစာသားသီးသန့်..."},
-    {"ep": 2, "title": "အပိုင်း ၂", "text": "မြန်မာစာသားသီးသန့်..."},
-    {"ep": 3, "title": "အပိုင်း ၃", "text": "မြန်မာစာသားသီးသန့်..."},
-    {"ep": 4, "title": "အပိုင်း ၄", "text": "မြန်မာစာသားသီးသန့်..."},
-    {"ep": 5, "title": "အပိုင်း ၅", "text": "မြန်မာစာသားသီးသန့်..."},
-    {"ep": 6, "title": "အပိုင်း ၆", "text": "မြန်မာစာသားသီးသန့်..."}
-  ]
-}`;
-        const jsonStr = await runReliableStoryAI(prompt, true);
-        let parsedSeries = {};
-        try {
-          parsedSeries = JSON.parse(jsonStr);
-        } catch (e) {
-          parsedSeries = {
-            series_title: topic,
-            episodes: Array.from({ length: 6 }, (_, i) => ({
-              ep: i + 1,
-              title: `အပိုင်း ${i + 1}`,
-              text: `${topic} အပိုင်း ${i + 1} ဇာတ်လမ်းစာသား`
-            }))
-          };
+Separate each episode clearly with:
+=== အပိုင်း ၁ ===
+[ဇာတ်လမ်းစာသား]
+=== အပိုင်း ၂ ===
+[ဇာတ်လမ်းစာသား]
+=== အပိုင်း ၃ ===
+[ဇာတ်လမ်းစာသား]
+=== အပိုင်း ၄ ===
+[ဇာတ်လမ်းစာသား]
+=== အပိုင်း ၅ ===
+[ဇာတ်လမ်းစာသား]
+=== အပိုင်း ၆ ===
+[ဇာတ်လမ်းစာသား]
+CRITICAL RULE: Do NOT output ANY English explanation or notes. Pure Burmese only.`;
+
+        const rawResult = await runStoryAI(prompt, false);
+        const parts = rawResult.split(/=== အပိုင်း\s*\d+\s*===/);
+
+        const episodes = [];
+        for (let i = 1; i <= 6; i++) {
+          const epText = cleanBurmeseStory(parts[i] || parts[i - 1] || "");
+          episodes.push({
+            ep: i,
+            title: `အပိုင်း ${i}`,
+            text: epText || `${topic} အပိုင်း ${i} ဇာတ်လမ်းစာသား`
+          });
         }
-
-        if (Array.isArray(parsedSeries.episodes)) {
-          parsedSeries.episodes = parsedSeries.episodes.map((ep, i) => ({
-            ep: ep.ep || i + 1,
-            title: ep.title || `အပိုင်း ${i + 1}`,
-            text: filterPureBurmeseStory(ep.text || ep.story || ep.script || "")
-          }));
-        }
-
-        return res.status(200).json(parsedSeries);
-
-      } else {
-        const prompt = `Write a complete movie story script in 100% pure Burmese about "${topic}" (${genre}).
-Length: approximately ${words} Burmese words.
-STRICT RULE: Write ONLY in Burmese. Do NOT include ANY English reasoning, notes, thoughts, or word counts.
-Output strictly valid JSON:
-{
-  "movie_title": "${topic}",
-  "story_text": "မြန်မာလို ဇာတ်လမ်းစာသား အပြည့်အစုံ..."
-}`;
-        const jsonStr = await runReliableStoryAI(prompt, true);
-        let movieObj = {};
-        try {
-          movieObj = JSON.parse(jsonStr);
-        } catch (e) {
-          movieObj = { story_text: jsonStr };
-        }
-
-        const rawStory = movieObj.story_text || movieObj.story || movieObj.script || movieObj.text || jsonStr;
-        const pureBurmeseStory = filterPureBurmeseStory(rawStory);
 
         return res.status(200).json({
-          movie_title: movieObj.movie_title || topic,
-          story_text: pureBurmeseStory
+          series_title: topic,
+          episodes: episodes
+        });
+
+      } else {
+        // Movie format: JSON မသုံးဘဲ မြန်မာစာသား တိုက်ရိုက် ထုတ်ယူခြင်း
+        const prompt = `Write a complete, captivating movie story in fluent, pure Burmese about "${topic}" (${genre}).
+Length: approximately ${words} Burmese words. Break thoughts into short sentences using commas.
+CRITICAL RULES:
+- Output ONLY the spoken Burmese story text.
+- Do NOT output any English words, English translation, notes, or word counts.
+- Write purely in Burmese ready for storytelling.`;
+
+        const rawStory = await runStoryAI(prompt, false);
+        const finalStory = cleanBurmeseStory(rawStory);
+
+        return res.status(200).json({
+          movie_title: topic,
+          story_text: finalStory
         });
       }
     }
