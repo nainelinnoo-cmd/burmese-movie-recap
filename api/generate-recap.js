@@ -5,27 +5,57 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-function buildSrtString(scriptText, totalDuration) {
-  const sentences = scriptText.match(/[^။!?\n]+[။!?\n]?/g) || [scriptText];
-  const cleaned = sentences.map(s => s.trim()).filter(Boolean);
-  const timePerCue = totalDuration / (cleaned.length || 1);
+async function fetchGoogleTTS(text) {
+  const chunks = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
+  const audioBuffers = [];
+  for (const chunk of chunks) {
+    if (!chunk.trim()) continue;
+    const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk.trim())}&tl=my&client=tw-ob`;
+    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    if (res.ok) {
+      const buf = await res.arrayBuffer();
+      audioBuffers.push(Buffer.from(buf));
+    }
+  }
+  if (audioBuffers.length > 0) return Buffer.concat(audioBuffers).toString("base64");
+  throw new Error("Google TTS မှ အသံမရရှိပါ");
+}
 
-  let srt = "";
-  cleaned.forEach((sentence, idx) => {
-    const startSec = idx * timePerCue;
-    const endSec = Math.min((idx + 1) * timePerCue, totalDuration);
+async function fetchAudioSafe(text, voice) {
+  if (voice && voice.startsWith("google-")) {
+    return await fetchGoogleTTS(text);
+  }
 
-    const fmt = (s) => {
-      const hrs = Math.floor(s / 3600).toString().padStart(2, "0");
-      const mins = Math.floor((s % 3600) / 60).toString().padStart(2, "0");
-      const secs = Math.floor(s % 60).toString().padStart(2, "0");
-      const ms = Math.floor((s % 1) * 1000).toString().padStart(3, "0");
-      return `${hrs}:${mins}:${secs},${ms}`;
-    };
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
-    srt += `${idx + 1}\n${fmt(startSec)} --> ${fmt(endSec)}\n${sentence}\n\n`;
-  });
-  return srt;
+    const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [text] }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (postRes.ok) {
+      const { event_id } = await postRes.json();
+      const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
+      const streamText = await streamRes.text();
+
+      for (const line of streamText.split("\n")) {
+        if (line.startsWith("data:")) {
+          const parsed = JSON.parse(line.replace("data:", "").trim());
+          if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("HF Space Timeout or Failed, Auto-fallback to Google TTS:", err.message);
+  }
+
+  // HF Space အဆင်မပြေပါက တန်းမပျက်စေဘဲ Google TTS ဖြင့် အလိုအလျောက် ရယူပေးခြင်း
+  return await fetchGoogleTTS(text);
 }
 
 async function runGeminiRecap(prompt) {
@@ -96,36 +126,14 @@ module.exports = async (req, res) => {
     const targetWordCount = Math.round((duration / 60) * 135);
 
     const prompt = `You are a movie recap storyteller. Based on this audio transcript: "${transcript.text}", write a complete Burmese movie recap in a "${tone}" tone.
-IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words so the voiceover covers the entire video without ending early. Output ONLY fluent Burmese script text without markdown.`;
+IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words so the voiceover covers the entire video. Use commas and short phrases. Output ONLY fluent Burmese script text without markdown.`;
 
     const recapScript = await runGeminiRecap(prompt);
-
-    const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [recapScript] }),
-    });
-    const { event_id } = await postRes.json();
-    const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
-    const streamText = await streamRes.text();
-
-    let voiceoverBase64 = "";
-    for (const line of streamText.split("\n")) {
-      if (line.startsWith("data:")) {
-        const parsed = JSON.parse(line.replace("data:", "").trim());
-        if (Array.isArray(parsed) && parsed[0]) {
-          voiceoverBase64 = parsed[0];
-          break;
-        }
-      }
-    }
-
-    const srtText = buildSrtString(recapScript, duration);
+    const voiceoverBase64 = await fetchAudioSafe(recapScript, voice);
 
     return res.status(200).json({
       script: recapScript,
-      voiceoverBase64: voiceoverBase64,
-      srtText: srtText
+      voiceoverBase64: voiceoverBase64
     });
 
   } catch (err) {
