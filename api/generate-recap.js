@@ -99,7 +99,7 @@ module.exports = async (req, res) => {
     const audioBuffer = Buffer.from(audioBase64, "base64");
 
     // အဆင့် ၁ - Groq Whisper STT (အသံမှ စာသားဖတ်ယူခြင်း)
-    const file = await toFile(audioBuffer, "audio.mp3");
+    const file = await toFile(audioBuffer, "audio.wav");
     const transcription = await groq.audio.transcriptions.create({
       file: file,
       model: "whisper-large-v3",
