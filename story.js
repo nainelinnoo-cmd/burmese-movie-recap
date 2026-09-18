@@ -1,35 +1,39 @@
-let s_currentVoice = "edge-nilar";
-let s_seriesData = null;
-let s_currentEpNum = 1;
-let s_scenePrompts = [];
-let s_sceneImages = [];
-let s_aspectRatio = "16:9";
+// Variable Collision မဖြစ်စေရန် Safe Scope သုံးစွဲထားခြင်း
+var s_currentVoice = "edge-nilar";
+var s_seriesData = null;
+var s_currentEpNum = 1;
+var s_scenePrompts = [];
+var s_sceneImages = [];
+var s_aspectRatio = "16:9";
 
-// Custom Motion Controls
-let s_motionStyle = "dynamic";
-let s_clipDurationMode = "auto";
+var s_motionStyle = "dynamic";
+var s_clipDurationMode = "auto";
 
-let s_audioEl = null;
-let s_currentBgm = null;
-let s_srtCues = [];
-let s_isMotionPlaying = false;
-let s_animFrameId = null;
+var s_audioEl = null;
+var s_currentBgm = null;
+var s_srtCues = [];
+var s_isMotionPlaying = false;
+var s_animFrameId = null;
 
-// Overlays Settings
-let s_isTitleActive = false;
-let s_isWatermarkActive = false;
-let s_isSrtVisible = true;
+var s_isTitleActive = false;
+var s_isWatermarkActive = false;
+var s_isSrtVisible = true;
 
-let s_srtFontSize = 18;
-let s_srtFontColor = "#ffffff";
-let s_srtBgStyle = "rgba(0,0,0,0.75)";
-let s_titleFontSize = 24;
-let s_watermarkImg = null;
+var s_srtFontSize = 18;
+var s_srtFontColor = "#ffffff";
+var s_srtBgStyle = "rgba(0,0,0,0.75)";
+var s_titleFontSize = 24;
+var s_watermarkImg = null;
 
 function initStoryView() {
-  const container = document.getElementById("view-story") ||
-                    document.getElementById("story-view") ||
-                    document.getElementById("story-container");
+  // Container Multi-Selector (မည်သည့် ID ဖြင့် ရေးထားသည်ဖြစ်စေ မိအောင် ဖမ်းယူသည်)
+  var container = document.getElementById("view-story") ||
+                  document.getElementById("story") ||
+                  document.getElementById("story-view") ||
+                  document.getElementById("view-stories") ||
+                  document.getElementById("story-container") ||
+                  document.querySelector("[id*='story']");
+
   if (!container) return;
 
   container.innerHTML = `
@@ -77,6 +81,7 @@ function initStoryView() {
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
+      <!-- Loading % အမှန်ပြသသည့် Progress Bar -->
       <div id="s-global-progress" style="display: none; background: #1e293b; border: 1px solid #0284c7; border-radius: 12px; padding: 12px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
           <span id="s-progress-status-title" style="color: #38bdf8; font-weight: bold;">လုပ်ဆောင်နေပါသည်...</span>
@@ -87,6 +92,7 @@ function initStoryView() {
         </div>
       </div>
 
+      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားခြင်း</span>
@@ -145,6 +151,7 @@ function initStoryView() {
         </div>
       </div>
 
+      <!-- ဆိုဒ် ရွေးချယ်ခြင်း -->
       <div class="card" style="background: #131d31; padding: 12px;">
         <label style="font-size: 0.8rem; margin-bottom: 6px; display: block; color: #facc15;">📐 ဗီဒီယို ဆိုဒ် (Aspect Ratio) ရွေးချယ်ပါ</label>
         <div style="display: flex; gap: 8px;">
@@ -154,6 +161,7 @@ function initStoryView() {
         </div>
       </div>
 
+      <!-- အဆင့် ၂: Prompt to Photo (ပုံအရေအတွက် နှင့် Clip Time ရွေးချယ်မှုများ) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo & Motion Settings</span>
@@ -197,6 +205,7 @@ function initStoryView() {
         <div id="s-photo-preview-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
       </div>
 
+      <!-- အဆင့် ၃: Text to Speech -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၃</span> 🎙️ Text to Speech</span>
@@ -223,6 +232,7 @@ function initStoryView() {
         <audio id="s-audio-player" controls style="width: 100%; height: 38px; display: none;"></audio>
       </div>
 
+      <!-- အဆင့် ၄: Motion Video Studio -->
       <div id="s-motion-studio" style="display: none; flex-direction: column; gap: 14px;">
         <div class="card" style="padding: 10px; background: #131d31;">
           <span style="font-weight: bold; color: #facc15; font-size: 0.9rem;"><span class="step-badge">အဆင့် ၄</span> 🎬 Motion Video Studio</span>
@@ -231,15 +241,18 @@ function initStoryView() {
         <div id="s-video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; max-height: 70vh; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
           <canvas id="s-motion-canvas" width="1280" height="720" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
 
+          <!-- Title Overlay -->
           <div id="s-drag-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; text-align: center; white-space: nowrap;">
             ခေါင်းစဉ် စာသား
           </div>
 
+          <!-- Subtitle Overlay with ↘ Resize Handle -->
           <div id="s-drag-subtitle" style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
             <span id="s-sub-text">စာတန်းထိုး ပြသမည့်နေရာ</span>
             <div id="s-sub-resize-handle" style="position: absolute; right: -7px; bottom: -7px; width: 22px; height: 22px; background: #10b981; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
           </div>
 
+          <!-- Watermark Overlay with ↘ Resize Handle -->
           <div id="s-drag-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 70px; height: 70px; cursor: move; z-index: 20; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
             <img id="s-wm-preview-img" src="" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" />
             <div id="s-wm-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
@@ -250,6 +263,7 @@ function initStoryView() {
           <span id="s-play-text">▶ Motion Video စမ်းဖွင့်မည်</span>
         </button>
 
+        <!-- Video Title Controls -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">✏️ Video Title / စာသားထည့်</span>
@@ -261,6 +275,7 @@ function initStoryView() {
           </div>
         </div>
 
+        <!-- Watermark Controls -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🖼️ Watermark & တံဆိပ်</span>
           <div style="display: flex; gap: 8px; align-items: center;">
@@ -269,6 +284,7 @@ function initStoryView() {
           </div>
         </div>
 
+        <!-- Subtitle (SRT) Settings (၇ မျိုး & ၈ မျိုး ⭕) -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
@@ -319,6 +335,7 @@ function initStoryView() {
           </div>
         </div>
 
+        <!-- Audio Mixer (BGM) -->
         <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 8px;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🎚️ Audio Mixer & BGM</span>
           <div>
@@ -330,6 +347,7 @@ function initStoryView() {
           </div>
         </div>
 
+        <!-- Final Export Card -->
         <div class="card" style="background: linear-gradient(145deg, #1e1b4b, #0f172a); border: 1px solid #6366f1;">
           <div style="font-size: 0.9rem; font-weight: bold; color: #a5b4fc; margin-bottom: 6px;">🚀 Motion Video အပြီးသတ် Download လုပ်ခြင်း</div>
           <button id="btn-s-export" onclick="exportMotionHardcodedVideo()" class="btn" style="background: linear-gradient(90deg, #6366f1, #10b981); font-weight: bold; font-size: 0.95rem; padding: 14px;">
@@ -349,11 +367,12 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
+// Global Progress Bar Controller
 function updateGlobalProgress(title, percent, show = true) {
-  const box = document.getElementById("s-global-progress");
-  const tEl = document.getElementById("s-progress-status-title");
-  const pEl = document.getElementById("s-progress-status-pct");
-  const bEl = document.getElementById("s-progress-status-bar");
+  var box = document.getElementById("s-global-progress");
+  var tEl = document.getElementById("s-progress-status-title");
+  var pEl = document.getElementById("s-progress-status-pct");
+  var bEl = document.getElementById("s-progress-status-bar");
 
   if (!show) {
     if (box) box.style.display = "none";
@@ -361,17 +380,17 @@ function updateGlobalProgress(title, percent, show = true) {
   }
   if (box) box.style.display = "block";
   if (tEl) tEl.innerText = title;
-  if (pEl) pEl.innerText = `${percent}%`;
-  if (bEl) bEl.style.width = `${percent}%`;
+  if (pEl) pEl.innerText = percent + "%";
+  if (bEl) bEl.style.width = percent + "%";
 }
 
 function setVideoRatio(ratio, el) {
   s_aspectRatio = ratio;
-  document.querySelectorAll(".ratio-btn").forEach(b => b.classList.remove("active"));
+  document.querySelectorAll(".ratio-btn").forEach(function(b) { b.classList.remove("active"); });
   el.classList.add("active");
 
-  const wrapper = document.getElementById("s-video-wrapper");
-  const canvas = document.getElementById("s-motion-canvas");
+  var wrapper = document.getElementById("s-video-wrapper");
+  var canvas = document.getElementById("s-motion-canvas");
 
   if (ratio === "16:9") {
     wrapper.style.aspectRatio = "16/9";
@@ -390,15 +409,15 @@ function setVideoRatio(ratio, el) {
   renderMotionFrame(0, 60);
 }
 
-// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (တိုက်ရိုက် စာသားထည့်သွင်းခြင်း)
+// အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း
 async function handleGenerateStoryScript() {
-  const topic = document.getElementById("s-topic-input").value.trim();
-  const format = document.getElementById("s-format-select").value;
-  const genre = document.getElementById("s-genre-select").value;
-  const duration = document.getElementById("s-duration-select").value;
-  const btn = document.getElementById("btn-gen-script");
-  const textarea = document.getElementById("s-script-textarea");
-  const epContainer = document.getElementById("s-ep-buttons-container");
+  var topic = document.getElementById("s-topic-input").value.trim();
+  var format = document.getElementById("s-format-select").value;
+  var genre = document.getElementById("s-genre-select").value;
+  var duration = document.getElementById("s-duration-select").value;
+  var btn = document.getElementById("btn-gen-script");
+  var textarea = document.getElementById("s-script-textarea");
+  var epContainer = document.getElementById("s-ep-buttons-container");
 
   if (!topic) return alert("ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
 
@@ -406,22 +425,22 @@ async function handleGenerateStoryScript() {
   updateGlobalProgress("AI မော်ဒယ်များနှင့် ချိတ်ဆက်နေပါသည်...", 20, true);
 
   try {
-    updateGlobalProgress("Gemini က မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 60, true);
+    updateGlobalProgress("Gemini က မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 65, true);
 
-    const res = await fetch("/api/generate-story", {
+    var res = await fetch("/api/generate-story", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "generate_script",
-        topic,
-        format,
-        genre,
+        topic: topic,
+        format: format,
+        genre: genre,
         durationMinutes: duration
       })
     });
 
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error);
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error || "ဇာတ်လမ်း ရေးသားမှု မအောင်မြင်ပါ");
 
     updateGlobalProgress("ဇာတ်လမ်းစာသား ရေးသားမှု ပြီးဆုံးပါပြီ!", 100, true);
 
@@ -432,22 +451,21 @@ async function handleGenerateStoryScript() {
     } else {
       s_seriesData = null;
       epContainer.style.display = "none";
-      const storyTitle = data.movie_title || topic;
-      const storyContent = data.story_text || data.script || "";
+      var storyTitle = data.movie_title || topic;
+      var storyContent = data.story_text || "";
 
-      document.getElementById("s-current-label").innerText = `🎬 ${storyTitle} (ရုပ်ရှင်ဇာတ်လမ်းစာသား)`;
-      // စာသားကို တိုက်ရိုက် သေချာပေါက် ထည့်သွင်းပေးခြင်း
+      document.getElementById("s-current-label").innerText = "🎬 " + storyTitle + " (ရုပ်ရှင်ဇာတ်လမ်းစာသား)";
       textarea.value = storyContent;
       document.getElementById("s-title-input").value = storyTitle;
       updateSTitleText(storyTitle);
     }
 
     btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
-    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
-    alert(`Error: ${err.message}`);
+    alert("Error: " + err.message);
     btn.innerText = "✨ AI ဖြင့် မြန်မာစာသီးသန့် ဇာတ်လမ်းရေးမည်";
   } finally {
     btn.disabled = false;
@@ -458,17 +476,17 @@ function selectStoryEpisode(epNum) {
   if (!s_seriesData || !s_seriesData.episodes) return;
   s_currentEpNum = epNum;
 
-  for (let i = 1; i <= 6; i++) {
-    const b = document.getElementById(`btn-sep-${i}`);
+  for (var i = 1; i <= 6; i++) {
+    var b = document.getElementById("btn-sep-" + i);
     if (b) {
       if (i === epNum) b.classList.add("active");
       else b.classList.remove("active");
     }
   }
 
-  const ep = s_seriesData.episodes[epNum - 1];
-  const epText = ep.text || "";
-  document.getElementById("s-current-label").innerText = `📖 အပိုင်း ${epNum}: ${ep.title}`;
+  var ep = s_seriesData.episodes[epNum - 1];
+  var epText = ep.text || "";
+  document.getElementById("s-current-label").innerText = "📖 အပိုင်း " + epNum + ": " + ep.title;
   document.getElementById("s-script-textarea").value = epText;
   document.getElementById("s-title-input").value = ep.title;
   updateSTitleText(ep.title);
@@ -476,10 +494,10 @@ function selectStoryEpisode(epNum) {
 
 // အဆင့် ၂: Prompt to Photo (Download ပြီးစီးမှုအလိုက် % တိကျစွာ ပြသခြင်း)
 async function handlePromptToPhoto() {
-  const scriptText = document.getElementById("s-script-textarea").value.trim();
-  const btn = document.getElementById("btn-prompt-photo");
-  const grid = document.getElementById("s-photo-preview-grid");
-  const count = parseInt(document.getElementById("s-photo-count").value) || 4;
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var btn = document.getElementById("btn-prompt-photo");
+  var grid = document.getElementById("s-photo-preview-grid");
+  var count = parseInt(document.getElementById("s-photo-count").value) || 4;
 
   if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ သို့မဟုတ် ရိုက်ထည့်ပေးပါ");
 
@@ -487,47 +505,47 @@ async function handlePromptToPhoto() {
   updateGlobalProgress("စာသားမှ မြင်ကွင်း Prompts များကို ခွဲထုတ်နေပါသည်...", 15, true);
 
   try {
-    const res = await fetch("/api/generate-story", {
+    var res = await fetch("/api/generate-story", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate_prompts", scriptText, photoCount: count })
+      body: JSON.stringify({ action: "generate_prompts", scriptText: scriptText, photoCount: count })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
     s_scenePrompts = data.prompts || [];
 
-    let w = 1280, h = 720;
+    var w = 1280, h = 720;
     if (s_aspectRatio === "9:16") { w = 720; h = 1280; }
     if (s_aspectRatio === "1:1") { w = 720; h = 720; }
 
     grid.innerHTML = "";
     grid.style.display = "grid";
-    grid.style.gridTemplateColumns = `repeat(${Math.min(4, count)}, 1fr)`;
+    grid.style.gridTemplateColumns = "repeat(" + Math.min(4, count) + ", 1fr)";
 
-    for (let i = 0; i < count; i++) {
-      grid.innerHTML += `<div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="scene-img-${i}" src="" style="width:100%;height:100%;object-fit:cover;" /></div>`;
+    for (var i = 0; i < count; i++) {
+      grid.innerHTML += '<div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="scene-img-' + i + '" src="" style="width:100%;height:100%;object-fit:cover;" /></div>';
     }
 
-    let loadedCount = 0;
-    const totalPrompts = s_scenePrompts.length;
+    var loadedCount = 0;
+    var totalPrompts = s_scenePrompts.length;
 
-    const loadPromises = s_scenePrompts.map((p, idx) => {
-      return new Promise((resolve) => {
-        const img = new Image();
+    var loadPromises = s_scenePrompts.map(function(p, idx) {
+      return new Promise(function(resolve) {
+        var img = new Image();
         img.crossOrigin = "anonymous";
-        const seed = Math.floor(Math.random() * 99999);
-        img.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=${w}&height=${h}&nologo=true&seed=${seed}`;
-        img.onload = () => {
+        var seed = Math.floor(Math.random() * 99999);
+        img.src = "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?width=" + w + "&height=" + h + "&nologo=true&seed=" + seed;
+        img.onload = function() {
           loadedCount++;
-          const realPercent = Math.round(20 + (loadedCount / totalPrompts) * 80);
-          updateGlobalProgress(`AI ဓာတ်ပုံ (${loadedCount}/${totalPrompts}) ဆွဲပြီးစီးပါပြီ...`, realPercent, true);
+          var realPercent = Math.round(20 + (loadedCount / totalPrompts) * 80);
+          updateGlobalProgress("AI ဓာတ်ပုံ (" + loadedCount + "/" + totalPrompts + ") ဆွဲပြီးစီးပါပြီ...", realPercent, true);
 
-          const previewImg = document.getElementById(`scene-img-${idx}`);
+          var previewImg = document.getElementById("scene-img-" + idx);
           if (previewImg) previewImg.src = img.src;
           resolve(img);
         };
-        img.onerror = () => {
+        img.onerror = function() {
           loadedCount++;
           resolve(null);
         };
@@ -537,15 +555,15 @@ async function handlePromptToPhoto() {
     s_sceneImages = (await Promise.all(loadPromises)).filter(Boolean);
 
     updateGlobalProgress("ဓာတ်ပုံများ အားလုံး အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!", 100, true);
-    btn.innerText = `✅ ဓာတ်ပုံ ${count} ပုံ အောင်မြင်စွာ ဆွဲပြီးပါပြီ (ပြန်ဆွဲနိုင်သည်)`;
+    btn.innerText = "✅ ဓာတ်ပုံ " + count + " ပုံ အောင်မြင်စွာ ဆွဲပြီးပါပြီ (ပြန်ဆွဲနိုင်သည်)";
     document.getElementById("s-motion-studio").style.display = "flex";
     renderMotionFrame(0, 60);
 
-    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
-    alert(`Photo Error: ${err.message}`);
+    alert("Photo Error: " + err.message);
   } finally {
     btn.disabled = false;
   }
@@ -553,37 +571,37 @@ async function handlePromptToPhoto() {
 
 // အဆင့် ၃: Text to Speech
 async function handleTextToSpeech() {
-  const scriptText = document.getElementById("s-script-textarea").value.trim();
-  const voice = document.getElementById("s-voice-select").value;
-  const btn = document.getElementById("btn-gen-audio");
-  const audioEl = document.getElementById("s-audio-player");
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var voice = document.getElementById("s-voice-select").value;
+  var btn = document.getElementById("btn-gen-audio");
+  var audioEl = document.getElementById("s-audio-player");
 
   if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ");
 
   btn.disabled = true;
-  updateGlobalProgress("TTS ဆာဗာသို့ အသံဖိုင် တောင်းဆိုနေပါသည်...", 30, true);
+  updateGlobalProgress("TTS ဆာဗာသို့ အသံဖိုင် တောင်းဆိုနေပါသည်...", 35, true);
 
   try {
-    updateGlobalProgress("မြန်မာစကားပြော အသံလှိုင်းများ ထုတ်လုပ်နေပါသည်...", 70, true);
+    updateGlobalProgress("မြန်မာစကားပြော အသံလှိုင်းများ ထုတ်လုပ်နေပါသည်...", 75, true);
 
-    const res = await fetch("/api/generate-story", {
+    var res = await fetch("/api/generate-story", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate_audio", scriptText, voice })
+      body: JSON.stringify({ action: "generate_audio", scriptText: scriptText, voice: voice })
     });
-    const data = await res.json();
+    var data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
     updateGlobalProgress("အသံဖိုင်နှင့် စာတန်းထိုး ချိတ်ဆက်ပြီးပါပြီ!", 100, true);
 
-    const audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
+    var audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), function(c) { return c.charCodeAt(0); })], { type: "audio/mp3" });
     audioEl.src = URL.createObjectURL(audioBlob);
     audioEl.style.display = "block";
     s_audioEl = audioEl;
 
-    audioEl.onloadedmetadata = () => {
-      const dur = audioEl.duration || 60;
-      const srt = generateStorySrt(scriptText, dur);
+    audioEl.onloadedmetadata = function() {
+      var dur = audioEl.duration || 60;
+      var srt = generateStorySrt(scriptText, dur);
       document.getElementById("s-srt-textarea").value = srt;
       s_srtCues = parseStorySrt(srt);
     };
@@ -591,21 +609,21 @@ async function handleTextToSpeech() {
     btn.innerText = "✅ အသံဖိုင် ရရှိပါပြီ";
     document.getElementById("s-motion-studio").style.display = "flex";
 
-    setTimeout(() => updateGlobalProgress("", 0, false), 1200);
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
 
   } catch (err) {
     updateGlobalProgress("", 0, false);
-    alert(`Audio Error: ${err.message}`);
+    alert("Audio Error: " + err.message);
   } finally {
     btn.disabled = false;
   }
 }
 
-// 2.5D Motion Pan/Zoom & Custom Styles
+// 2.5D Motion Pan/Zoom & Custom Styles Rendering
 function renderMotionFrame(time, duration) {
-  const canvas = document.getElementById("s-motion-canvas");
+  var canvas = document.getElementById("s-motion-canvas");
   if (!canvas) return;
-  const ctx = canvas.getContext("2d");
+  var ctx = canvas.getContext("2d");
 
   if (s_sceneImages.length === 0) {
     ctx.fillStyle = "#0f172a";
@@ -613,20 +631,20 @@ function renderMotionFrame(time, duration) {
     return;
   }
 
-  let segmentDur = (duration || 60) / s_sceneImages.length;
+  var segmentDur = (duration || 60) / s_sceneImages.length;
   if (s_clipDurationMode !== "auto") {
     segmentDur = parseFloat(s_clipDurationMode) || 5;
   }
 
-  const idx = Math.floor(time / segmentDur) % s_sceneImages.length;
-  const prog = (time % segmentDur) / segmentDur;
+  var idx = Math.floor(time / segmentDur) % s_sceneImages.length;
+  var prog = (time % segmentDur) / segmentDur;
 
-  const img = s_sceneImages[idx];
+  var img = s_sceneImages[idx];
   if (!img) return;
 
-  let scale = 1.0;
-  let panX = 0;
-  let panY = 0;
+  var scale = 1.0;
+  var panX = 0;
+  var panY = 0;
 
   if (s_motionStyle === "zoom-in") {
     scale = 1.0 + prog * 0.15;
@@ -664,7 +682,7 @@ function renderMotionFrame(time, duration) {
 
 function toggleMotionPlayback() {
   if (!s_audioEl || !s_audioEl.src) return alert("အဆင့် ၃ မှ အသံဖိုင် အရင်ထုတ်ပေးပါခင်ဗျာ");
-  const btnText = document.getElementById("s-play-text");
+  var btnText = document.getElementById("s-play-text");
 
   if (s_audioEl.paused) {
     s_audioEl.play();
@@ -674,12 +692,12 @@ function toggleMotionPlayback() {
 
     function loop() {
       if (!s_isMotionPlaying) return;
-      const curr = s_audioEl.currentTime;
-      const dur = s_audioEl.duration || 60;
+      var curr = s_audioEl.currentTime;
+      var dur = s_audioEl.duration || 60;
       renderMotionFrame(curr, dur);
 
       if (s_isSrtVisible) {
-        const cue = s_srtCues.find(c => curr >= c.start && curr <= c.end);
+        var cue = s_srtCues.find(function(c) { return curr >= c.start && curr <= c.end; });
         document.getElementById("s-sub-text").innerText = cue ? cue.text : "";
       }
       s_animFrameId = requestAnimationFrame(loop);
@@ -698,9 +716,9 @@ function toggleMotionPlayback() {
 // Overlays Controls
 function toggleSTitle() {
   s_isTitleActive = !s_isTitleActive;
-  const el = document.getElementById("s-drag-title");
-  const box = document.getElementById("s-title-box");
-  const btn = document.getElementById("btn-s-title-toggle");
+  var el = document.getElementById("s-drag-title");
+  var box = document.getElementById("s-title-box");
+  var btn = document.getElementById("btn-s-title-toggle");
   el.style.display = s_isTitleActive ? "block" : "none";
   box.style.display = s_isTitleActive ? "flex" : "none";
   btn.innerText = s_isTitleActive ? "Title: ON" : "Title: OFF";
@@ -714,17 +732,17 @@ function updateSTitleText(t) {
 
 function changeSTitleSize(v) {
   s_titleFontSize = v;
-  document.getElementById("s-drag-title").style.fontSize = `${v}px`;
+  document.getElementById("s-drag-title").style.fontSize = v + "px";
 }
 
 function handleSWatermarkUpload(e) {
-  const file = e.target.files[0];
+  var file = e.target.files[0];
   if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (ev) => {
+  var reader = new FileReader();
+  reader.onload = function(ev) {
     s_watermarkImg = new Image();
     s_watermarkImg.src = ev.target.result;
-    s_watermarkImg.onload = () => {
+    s_watermarkImg.onload = function() {
       document.getElementById("s-wm-preview-img").src = ev.target.result;
       document.getElementById("s-drag-watermark").style.display = "block";
       document.getElementById("btn-s-remove-wm").style.display = "block";
@@ -744,14 +762,14 @@ function removeSWatermark() {
 
 function setSFontColor(color, el) {
   s_srtFontColor = color;
-  document.querySelectorAll(".s-f-dot").forEach(d => d.style.borderColor = "transparent");
+  document.querySelectorAll(".s-f-dot").forEach(function(d) { d.style.borderColor = "transparent"; });
   el.style.borderColor = "#38bdf8";
   applySSrtStyles();
 }
 
 function setSBgStyle(style, el) {
   s_srtBgStyle = style;
-  document.querySelectorAll(".s-b-dot").forEach(d => {
+  document.querySelectorAll(".s-b-dot").forEach(function(d) {
     d.style.borderColor = (d.getAttribute("title") && d.getAttribute("title").includes("အနားကွပ်")) ? "#ffffff" : "transparent";
   });
   el.style.borderColor = "#38bdf8";
@@ -760,15 +778,15 @@ function setSBgStyle(style, el) {
 
 function changeSSrtFontSize(val) {
   s_srtFontSize = val;
-  document.getElementById("s-srt-size-val").innerText = `${val}px`;
+  document.getElementById("s-srt-size-val").innerText = val + "px";
   applySSrtStyles();
 }
 
 function applySSrtStyles() {
-  const sub = document.getElementById("s-drag-subtitle");
+  var sub = document.getElementById("s-drag-subtitle");
   if (!sub) return;
   sub.style.color = s_srtFontColor;
-  sub.style.fontSize = `${s_srtFontSize}px`;
+  sub.style.fontSize = s_srtFontSize + "px";
 
   if (s_srtBgStyle === "stroke") {
     sub.style.background = "transparent";
@@ -787,7 +805,7 @@ function toggleSSrtVisibility() {
 }
 
 function toggleSSrtEdit() {
-  const b = document.getElementById("s-srt-edit-box");
+  var b = document.getElementById("s-srt-edit-box");
   b.style.display = b.style.display === "none" ? "flex" : "none";
 }
 
@@ -812,12 +830,12 @@ function removeSBgm() {
 
 // Touch Dragging & Resizing
 function setupSTouchDrag(elementId) {
-  const el = document.getElementById(elementId);
-  const wrapper = document.getElementById("s-video-wrapper");
+  var el = document.getElementById(elementId);
+  var wrapper = document.getElementById("s-video-wrapper");
   if (!el || !wrapper) return;
 
-  let isDragging = false;
-  let startX, startY, origX, origY;
+  var isDragging = false;
+  var startX, startY, origX, origY;
 
   function onStart(e) {
     if (e.target.id && e.target.id.includes("resize-handle")) return;
@@ -831,17 +849,17 @@ function setupSTouchDrag(elementId) {
 
   function onMove(e) {
     if (!isDragging) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
 
-    let newX = origX + (clientX - startX);
-    let newY = origY + (clientY - startY);
+    var newX = origX + (clientX - startX);
+    var newY = origY + (clientY - startY);
 
     newX = Math.max(0, Math.min(newX, wrapper.clientWidth - el.clientWidth));
     newY = Math.max(0, Math.min(newY, wrapper.clientHeight - el.clientHeight));
 
-    el.style.left = `${newX}px`;
-    el.style.top = `${newY}px`;
+    el.style.left = newX + "px";
+    el.style.top = newY + "px";
   }
 
   function onEnd() { isDragging = false; }
@@ -855,13 +873,13 @@ function setupSTouchDrag(elementId) {
 }
 
 function setupSSubtitleTouchResize() {
-  const handle = document.getElementById("s-sub-resize-handle");
-  const slider = document.getElementById("s-srt-size-slider");
-  const valText = document.getElementById("s-srt-size-val");
+  var handle = document.getElementById("s-sub-resize-handle");
+  var slider = document.getElementById("s-srt-size-slider");
+  var valText = document.getElementById("s-srt-size-val");
   if (!handle) return;
 
-  let isResizing = false;
-  let startX, startSize;
+  var isResizing = false;
+  var startX, startSize;
 
   function onStart(e) {
     e.stopPropagation();
@@ -872,12 +890,12 @@ function setupSSubtitleTouchResize() {
 
   function onMove(e) {
     if (!isResizing) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const delta = clientX - startX;
-    let newSize = Math.max(10, Math.min(100, Math.round(startSize + delta * 0.35)));
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var delta = clientX - startX;
+    var newSize = Math.max(10, Math.min(100, Math.round(startSize + delta * 0.35)));
     s_srtFontSize = newSize;
     if (slider) slider.value = newSize;
-    if (valText) valText.innerText = `${newSize}px`;
+    if (valText) valText.innerText = newSize + "px";
     applySSrtStyles();
   }
 
@@ -892,12 +910,12 @@ function setupSSubtitleTouchResize() {
 }
 
 function setupSTouchResize(targetId, handleId) {
-  const target = document.getElementById(targetId);
-  const handle = document.getElementById(handleId);
+  var target = document.getElementById(targetId);
+  var handle = document.getElementById(handleId);
   if (!target || !handle) return;
 
-  let isResizing = false;
-  let startX, startY, startW, startH;
+  var isResizing = false;
+  var startX, startY, startW, startH;
 
   function onStart(e) {
     e.stopPropagation();
@@ -910,10 +928,10 @@ function setupSTouchResize(targetId, handleId) {
 
   function onMove(e) {
     if (!isResizing) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    target.style.width = `${Math.max(30, startW + (clientX - startX))}px`;
-    target.style.height = `${Math.max(20, startH + (clientY - startY))}px`;
+    var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    target.style.width = Math.max(30, startW + (clientX - startX)) + "px";
+    target.style.height = Math.max(20, startH + (clientY - startY)) + "px";
   }
 
   function onEnd() { isResizing = false; }
@@ -927,27 +945,27 @@ function setupSTouchResize(targetId, handleId) {
 }
 
 function generateStorySrt(scriptText, totalDuration) {
-  const sentences = scriptText.match(/[^။!?\n]+[။!?\n]?/g) || [scriptText];
-  const chunks = sentences.map(s => s.trim()).filter(Boolean);
-  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
+  var sentences = scriptText.match(/[^။!?\n]+[။!?\n]?/g) || [scriptText];
+  var chunks = sentences.map(function(s) { return s.trim(); }).filter(Boolean);
+  var totalLength = chunks.reduce(function(acc, c) { return acc + c.length; }, 0);
 
-  let srt = "";
-  let currentStart = 0;
+  var srt = "";
+  var currentStart = 0;
 
-  chunks.forEach((chunk, index) => {
-    const chunkRatio = chunk.length / totalLength;
-    const chunkDuration = totalDuration * chunkRatio;
-    const currentEnd = Math.min(currentStart + chunkDuration, totalDuration);
+  chunks.forEach(function(chunk, index) {
+    var chunkRatio = chunk.length / totalLength;
+    var chunkDuration = totalDuration * chunkRatio;
+    var currentEnd = Math.min(currentStart + chunkDuration, totalDuration);
 
-    const fmt = (s) => {
-      const hrs = Math.floor(s / 3600).toString().padStart(2, "0");
-      const mins = Math.floor((s % 3600) / 60).toString().padStart(2, "0");
-      const secs = Math.floor(s % 60).toString().padStart(2, "0");
-      const ms = Math.floor((s % 1) * 1000).toString().padStart(3, "0");
-      return `${hrs}:${mins}:${secs},${ms}`;
+    var fmt = function(s) {
+      var hrs = Math.floor(s / 3600).toString().padStart(2, "0");
+      var mins = Math.floor((s % 3600) / 60).toString().padStart(2, "0");
+      var secs = Math.floor(s % 60).toString().padStart(2, "0");
+      var ms = Math.floor((s % 1) * 1000).toString().padStart(3, "0");
+      return hrs + ":" + mins + ":" + secs + "," + ms;
     };
 
-    srt += `${index + 1}\n${fmt(currentStart)} --> ${fmt(currentEnd)}\n${chunk}\n\n`;
+    srt += (index + 1) + "\n" + fmt(currentStart) + " --> " + fmt(currentEnd) + "\n" + chunk + "\n\n";
     currentStart = currentEnd;
   });
 
@@ -956,10 +974,191 @@ function generateStorySrt(scriptText, totalDuration) {
 
 function parseStorySrt(srtText) {
   if (!srtText) return [];
-  const blocks = srtText.trim().split(/\n\s*\n/);
-  return blocks.map(block => {
-    const lines = block.split("\n");
+  var blocks = srtText.trim().split(/\n\s*\n/);
+  return blocks.map(function(block) {
+    var lines = block.split("\n");
     if (lines.length >= 3) {
-      const timeParts = lines[1].split(" --> ");
-      const parseSec = (t) => {
-        const [h, m, s] = t.split(":");
+      var timeParts = lines[1].split(" --> ");
+      var parseSec = function(t) {
+        var parts = t.split(":");
+        var secParts = parts[2].split(",");
+        return parseInt(parts[0]) * 3600 + parseInt(parts[1]) * 60 + parseInt(secParts[0]) + parseInt(secParts[1]) / 1000;
+      };
+      return { start: parseSec(timeParts[0]), end: parseSec(timeParts[1]), text: lines.slice(2).join(" ") };
+    }
+    return null;
+  }).filter(Boolean);
+}
+
+// ၈။ Final Hardcoded Video Export
+async function exportMotionHardcodedVideo() {
+  if (!s_audioEl || !s_audioEl.src) return alert("ဗီဒီယိုနှင့် အသံဖိုင် အဆင်သင့် မရှိသေးပါ");
+
+  var exportBtn = document.getElementById("btn-s-export");
+  var wrapper = document.getElementById("s-video-wrapper");
+  var subEl = document.getElementById("s-drag-subtitle");
+  var titleEl = document.getElementById("s-drag-title");
+  var wmEl = document.getElementById("s-drag-watermark");
+
+  exportBtn.disabled = true;
+  updateGlobalProgress("Motion Video ကို Render စတင်ပြုလုပ်နေပါသည်...", 5, true);
+
+  var exportCanvas = document.createElement("canvas");
+  if (s_aspectRatio === "9:16") {
+    exportCanvas.width = 720;
+    exportCanvas.height = 1280;
+  } else if (s_aspectRatio === "1:1") {
+    exportCanvas.width = 720;
+    exportCanvas.height = 720;
+  } else {
+    exportCanvas.width = 1280;
+    exportCanvas.height = 720;
+  }
+  var ctx = exportCanvas.getContext("2d");
+
+  var audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  var dest = audioCtx.createMediaStreamDestination();
+
+  try {
+    var aSource = audioCtx.createMediaElementSource(s_audioEl);
+    aSource.connect(dest);
+  } catch (e) {}
+
+  try {
+    if (s_currentBgm) {
+      var bSource = audioCtx.createMediaElementSource(s_currentBgm);
+      bSource.connect(dest);
+    }
+  } catch (e) {}
+
+  var canvasStream = exportCanvas.captureStream(30);
+  var combinedStream = new MediaStream([
+    ...canvasStream.getVideoTracks(),
+    ...dest.stream.getAudioTracks()
+  ]);
+
+  var mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+    ? "video/webm;codecs=vp9,opus"
+    : "video/webm";
+
+  var recorder = new MediaRecorder(combinedStream, { mimeType });
+  var chunks = [];
+
+  recorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) chunks.push(e.data); };
+  recorder.onstop = function() {
+    var blob = new Blob(chunks, { type: "video/webm" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "Story_Motion_Video_" + s_aspectRatio.replace(":", "_") + "_" + Date.now() + ".webm";
+    a.click();
+
+    updateGlobalProgress("Motion Video Download ရယူပြီးပါပြီ!", 100, true);
+    setTimeout(function() {
+      updateGlobalProgress("", 0, false);
+      exportBtn.disabled = false;
+    }, 2000);
+  };
+
+  s_audioEl.currentTime = 0;
+  if (s_currentBgm) s_currentBgm.currentTime = 0;
+  recorder.start();
+  await s_audioEl.play();
+  if (s_currentBgm) s_currentBgm.play();
+
+  var scaleX = exportCanvas.width / wrapper.clientWidth;
+  var scaleY = exportCanvas.height / wrapper.clientHeight;
+
+  function exportLoop() {
+    if (s_audioEl.paused || s_audioEl.ended) return;
+
+    var curr = s_audioEl.currentTime;
+    var dur = s_audioEl.duration || 60;
+
+    renderMotionFrame(curr, dur);
+    ctx.drawImage(document.getElementById("s-motion-canvas"), 0, 0, exportCanvas.width, exportCanvas.height);
+
+    if (s_isWatermarkActive && s_watermarkImg && wmEl.style.display !== "none") {
+      ctx.drawImage(s_watermarkImg, wmEl.offsetLeft * scaleX, wmEl.offsetTop * scaleY, wmEl.clientWidth * scaleX, wmEl.clientHeight * scaleY);
+    }
+
+    if (s_isTitleActive && titleEl.style.display !== "none") {
+      var tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
+      var ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
+      ctx.font = "bold " + Math.round(s_titleFontSize * scaleY) + "px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "#facc15";
+      ctx.shadowColor = "#000";
+      ctx.shadowBlur = 8;
+      ctx.fillText(titleEl.innerText, tx, ty);
+      ctx.shadowBlur = 0;
+    }
+
+    if (s_isSrtVisible && subEl.style.display !== "none") {
+      var cue = s_srtCues.find(function(c) { return curr >= c.start && curr <= c.end; });
+      if (cue && cue.text) {
+        var sx = (subEl.offsetLeft + subEl.clientWidth / 2) * scaleX;
+        var sy = (subEl.offsetTop + subEl.clientHeight / 2) * scaleY;
+        var dynFont = Math.round(s_srtFontSize * scaleY);
+
+        ctx.font = "bold " + dynFont + "px sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        if (s_srtBgStyle === "stroke") {
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 5 * scaleX;
+          ctx.strokeText(cue.text, sx, sy);
+          ctx.fillStyle = s_srtFontColor;
+          ctx.fillText(cue.text, sx, sy);
+        } else {
+          var metrics = ctx.measureText(cue.text);
+          var padX = 14 * scaleX;
+          var padY = 8 * scaleY;
+          var bW = metrics.width + padX * 2;
+          var bH = dynFont + padY * 2;
+
+          ctx.fillStyle = s_srtBgStyle;
+          ctx.beginPath();
+          ctx.roundRect(sx - bW / 2, sy - bH / 2, bW, bH, 8 * scaleX);
+          ctx.fill();
+
+          ctx.fillStyle = s_srtFontColor;
+          ctx.fillText(cue.text, sx, sy);
+        }
+      }
+    }
+
+    var pct = Math.min(99, Math.round((curr / dur) * 100));
+    updateGlobalProgress("ဗီဒီယို Render ပြုလုပ်နေပါသည်...", pct, true);
+
+    requestAnimationFrame(exportLoop);
+  }
+
+  s_audioEl.onended = function() {
+    recorder.stop();
+    if (s_currentBgm) s_currentBgm.pause();
+  };
+
+  exportLoop();
+}
+
+// Router Hooks များ အားလုံးနှင့် ချိတ်ဆက်ခြင်း (Black Screen မဖြစ်စေရန်)
+window.initStoryView = initStoryView;
+window.initStory = initStoryView;
+window.renderStory = initStoryView;
+window.showStory = initStoryView;
+window.loadStoryView = initStoryView;
+
+if (document.readyState !== "loading") {
+  initStoryView();
+} else {
+  document.addEventListener("DOMContentLoaded", initStoryView);
+}
+
+// Auto-Mount Listener & Tab Switch Trigger
+document.addEventListener("click", function(e) {
+  if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)") || e.target.closest("button:nth-child(3)"))) {
+    setTimeout(initStoryView, 50);
+    setTimeout(initStoryView, 200);
+  }
+});
