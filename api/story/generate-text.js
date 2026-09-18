@@ -3,8 +3,80 @@ const { Groq } = require("groq-sdk");
 
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
+const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-function withTimeout(promise, ms = 15000) {
+async function fetchGoogleTTS(text) {
+  const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
+  const chunks = [];
+  for (const s of sentences) {
+    const trimmed = s.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > 50) {
+      chunks.push(...(trimmed.match(/.{1,50}/g) || [trimmed]));
+    } else {
+      chunks.push(trimmed);
+    }
+  }
+
+  const audioBuffers = await Promise.all(
+    chunks.map(async (chunk) => {
+      const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk.trim())}&tl=my&client=tw-ob`;
+      const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://translate.google.com/" } });
+      if (!res.ok) throw new Error("Google TTS Fail");
+      return Buffer.from(await res.arrayBuffer());
+    })
+  );
+  return Buffer.concat(audioBuffers).toString("base64");
+}
+
+async function fetchEdgeTTS(text, voice = "edge-thiha") {
+  const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
+
+  let postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [text, voiceName] }),
+    signal: controller.signal
+  }).catch(() => null);
+
+  if (!postRes || !postRes.ok) {
+    postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [text] }),
+      signal: controller.signal
+    });
+  }
+  clearTimeout(timeoutId);
+
+  if (!postRes.ok) throw new Error("HF TTS Fail");
+  const { event_id } = await postRes.json();
+
+  const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
+  const streamText = await streamRes.text();
+
+  for (const line of streamText.split("\n")) {
+    if (line.startsWith("data:")) {
+      const parsed = JSON.parse(line.replace("data:", "").trim());
+      if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+    }
+  }
+  throw new Error("TTS Empty");
+}
+
+async function fetchAudioSafe(text, voice) {
+  if (voice === "google-my-female") {
+    try { return await fetchGoogleTTS(text); } catch (e) { return await fetchEdgeTTS(text, "edge-nilar"); }
+  }
+  if (voice && voice.includes("nilar")) {
+    try { return await fetchEdgeTTS(text, "edge-nilar"); } catch (e) { return await fetchGoogleTTS(text); }
+  }
+  try { return await fetchEdgeTTS(text, "edge-thiha"); } catch (e) { return await fetchGoogleTTS(text); }
+}
+
+function withTimeout(promise, ms = 8000) {
   return Promise.race([
     promise,
     new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
@@ -12,11 +84,7 @@ function withTimeout(promise, ms = 15000) {
 }
 
 async function runAIWithModel(prompt, systemInstruction = "") {
-  const GEMINI_MODELS = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-2.5-flash"
-  ];
+  const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
 
   if (process.env.GEMINI_API_KEY) {
     for (const m of GEMINI_MODELS) {
@@ -25,9 +93,17 @@ async function runAIWithModel(prompt, systemInstruction = "") {
           ai.models.generateContent({
             model: m,
             contents: prompt,
-            config: systemInstruction ? { systemInstruction } : {}
+            config: {
+              systemInstruction: systemInstruction || undefined,
+              safetySettings: [
+                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
+                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
+              ]
+            }
           }),
-          12000
+          7000
         );
         if (response && response.text) {
           return { text: response.text.trim(), modelUsed: m };
@@ -46,7 +122,7 @@ async function runAIWithModel(prompt, systemInstruction = "") {
             { role: "user", content: prompt }
           ]
         }),
-        12000
+        6000
       );
       const content = gRes.choices[0]?.message?.content?.trim();
       if (content) return { text: content, modelUsed: "Groq (Llama-3.1)" };
@@ -54,32 +130,21 @@ async function runAIWithModel(prompt, systemInstruction = "") {
   }
 
   try {
-    const res = await withTimeout(
-      fetch("https://text.pollinations.ai/", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: [
-            ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-            { role: "user", content: prompt }
-          ]
-        })
-      }),
-      15000
-    );
+    const pUrl = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
+    const res = await withTimeout(fetch(pUrl), 7000);
     if (res.ok) {
       const pText = await res.text();
-      return { text: pText.trim(), modelUsed: "Pollinations AI" };
+      if (pText) return { text: pText.trim(), modelUsed: "Pollinations AI" };
     }
   } catch (e) {}
 
-  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ ခေတ္တစောင့်ပြီး ထပ်မံကြိုးစားပေးပါ။");
+  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ ထပ်မံကြိုးစားပေးပါ။");
 }
 
 function filterStrictBurmeseStory(rawText) {
   if (!rawText) return "";
   let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "")
-                    .replace(/```json/gi, "").replace(/```/g, "")
+                    .replace(/```[a-z]*\n?/gi, "").replace(/```/g, "")
                     .replace(/\\n/g, "\n").replace(/\\"/g, '"');
 
   const firstBurmeseIdx = text.search(/[\u1000-\u109F]/);
@@ -116,17 +181,24 @@ module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { action, topic, genre, format, durationMinutes, scriptText, photoCount } = req.body;
+    const { action, topic, genre, format, durationMinutes, scriptText, voice, photoCount } = req.body;
+
+    if (action === "generate_audio") {
+      if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
+      const audioBase64 = await fetchAudioSafe(scriptText, voice);
+      const voiceLabel = (voice && voice.includes("nilar")) ? "Edge-TTS (နီလာ)" : (voice && voice.includes("thiha")) ? "Edge-TTS (သီဟ)" : "Google TTS";
+      return res.status(200).json({ audioBase64, model_used: voiceLabel });
+    }
 
     if (action === "translate_to_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
 
-      const prompt = `Read this Burmese story: "${scriptText.substring(0, 500)}"
-Task: Extract exactly ${count} visual cinematic scenes and translate into descriptive English image prompts.
-Output format: ${count} English prompts, one per line. No numbers.`;
+      const prompt = `Read this story snippet: "${scriptText.substring(0, 450)}"
+Translate the visual scenes into exactly ${count} cinematic English image prompts for AI generation.
+Output format: ${count} descriptive English lines only. No numbers.`;
 
-      const aiRes = await runAIWithModel(prompt, "You are an image prompt engineer. Output only English prompts, one per line. No numbers.");
+      const aiRes = await runAIWithModel(prompt, "You are a prompt engineer. Output English image prompts only, one per line. No numbers.");
       const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
@@ -147,13 +219,12 @@ Output format: ${count} English prompts, one per line. No numbers.`;
 
     const selectedMins = parseInt(durationMinutes) || 1;
     const words = selectedMins * 105;
-    const systemPrompt = "You are a professional Burmese storyteller. Write in natural Burmese script only. Absolutely NO numbers (1, 2, 3), NO English words, NO planning notes.";
+    const systemPrompt = "You are a professional Burmese author. Output strictly continuous Burmese story narration. No numbers, no lists, no English words.";
 
     if (format === "series") {
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
 အခန်းဆက် ၆ ပိုင်းပါဝင်သော မြန်မာပုံပြင် ရေးပေးပါ။
-အပိုင်းတစ်ခုချင်းစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် လုံးဝ မတပ်ပါနှင့်။
-အပိုင်းများကို အောက်ပါအတိုင်းသာ ခွဲပေးပါ-
+အပိုင်းတစ်ခုစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် မတပ်ပါနှင့်။
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
 === အပိုင်း ၂ ===
@@ -191,7 +262,7 @@ Output format: ${count} English prompts, one per line. No numbers.`;
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
 ပြီးပြည့်စုံသော ရုပ်ရှင်ပုံပြင် ဇာတ်လမ်းစာသားကို မြန်မာဘာသာသက်သက်ဖြင့် စာပိုဒ်လိုက် ရေးပေးပါ။
 စာလုံးရေ ခန့်မှန်းခြေ: ${words} လုံး။
-အဓိက စည်းမျဉ်း: နံပါတ်စဉ်များ (၁၊ ၂၊ ၃ သို့မဟုတ် 1, 2, 3) လုံးဝမတပ်ရပါ။ အင်္ဂလိပ်စာလုံး လုံးဝ မပါရပါ။ ပုံပြင်စကားပြေ သက်သက်သာ ရေးပေးပါ။`;
+စည်းမျဉ်း: နံပါတ်စဉ် လုံးဝမတပ်ရပါ။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။ စကားပြေသက်သက်သာ ရေးပါ။`;
 
       const aiRes = await runAIWithModel(prompt, systemPrompt);
       const cleanStory = filterStrictBurmeseStory(aiRes.text);
