@@ -1,7 +1,5 @@
-var s_seriesData = null;
-var s_currentEpNum = 1;
-var s_currentVoice = "edge-nilar";
-
+var s_storyText = "";
+var s_promptsArray = [];
 var s_sceneImages = [];
 var s_aspectRatio = "16:9";
 var s_motionStyle = "dynamic";
@@ -35,87 +33,103 @@ function initStoryView() {
       .step-badge { background: #0284c7; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; font-weight: bold; }
       .ratio-btn { flex: 1; padding: 8px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
       .ratio-btn.active { background: #38bdf8; color: #000; border-color: #38bdf8; }
-      .ep-btn { padding: 8px 0; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-weight: bold; cursor: pointer; font-size: 0.8rem; }
-      .ep-btn.active { background: #38bdf8; color: #000; border-color: #38bdf8; }
     </style>
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
-      <div class="card" style="background: #131d31; padding: 12px;">
-        <label style="font-size: 0.8rem; margin-bottom: 6px; display: block; color: #facc15;">🎬 ဇာတ်လမ်းပုံစံ ရွေးချယ်ပါ (Movie or Series)</label>
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <select id="s-format-select" style="height: 42px; font-size: 0.85rem; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 8px;">
-            <option value="movie" selected>🎬 Movie (တစ်ပိုင်းတည်း)</option>
-            <option value="series">📺 Series (၆ ပိုင်းတွဲ)</option>
-          </select>
-          <select id="s-duration-select" style="height: 42px; font-size: 0.85rem;">
-            <option value="1">၁ မိနစ်စာ</option>
-            <option value="2">၂ မိနစ်စာ</option>
-            <option value="3">၃ မိနစ်စာ</option>
-          </select>
+      <!-- Model Tracker & Accurate Loading Bar -->
+      <div id="s-global-progress" style="display: none; background: #1e293b; border: 1px solid #0284c7; border-radius: 12px; padding: 12px;">
+        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
+          <span id="s-progress-status-title" style="color: #38bdf8; font-weight: bold;">စတင်နေပါသည်...</span>
+          <span id="s-progress-status-pct" style="color: #facc15; font-weight: bold;">0%</span>
+        </div>
+        <div style="width: 100%; height: 8px; background: #0f172a; border-radius: 6px; overflow: hidden;">
+          <div id="s-progress-status-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.25s ease;"></div>
         </div>
       </div>
 
+      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးထုတ်ခြင်း Box -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
-        <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ဇာတ်လမ်းစာသား နှင့် အသံဖိုင် (TTS) ထုတ်မည်</span>
-        <input type="text" id="s-topic" placeholder="ဇာတ်လမ်း ခေါင်းစဉ် (ဥပမာ- ရွာထိပ်က စုန်းမကြီး)..." style="font-size: 0.85rem;" />
+        <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း</span>
+        <input type="text" id="s-topic" placeholder="ဇာတ်လမ်းခေါင်းစဉ် (ဥပမာ- ရွာထိပ်က စုန်းမကြီး)..." style="font-size: 0.85rem;" />
 
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
-          <select id="s-genre" style="height: 42px; font-size: 0.8rem;">
-            <option value="horror">👻 သရဲ</option>
-            <option value="mystery">🔍 လျှို့ဝှက်</option>
-            <option value="drama">💔 ဘဝ</option>
-            <option value="motivation">💪 ခွန်အား</option>
-          </select>
-          <select id="s-voice" style="height: 42px; font-size: 0.8rem; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 8px;">
-            <option value="edge-nilar" selected>👩 နီလာ (ကြည်လင်)</option>
-            <option value="edge-thiha">👨 သီဟ (ပုံမှန်)</option>
-            <option value="google-my-female">👩 Google (မ)</option>
-          </select>
-        </div>
-
-        <button onclick="handleStep1GenerateStory()" id="btn-step1" class="btn" style="background: #0284c7; padding: 12px; font-weight: bold;">
-          <span>✨ ၁။ မြန်မာစာသားနှင့် အသံဖိုင် အရင်ထုတ်မည်</span>
-        </button>
-
-        <div id="s-ep-buttons-container" style="display: none; flex-direction: column; gap: 6px;">
-          <label style="font-size: 0.75rem; color: #facc15; font-weight: bold;">📺 အပိုင်းများ ရွေးချယ်ရန် (Ep 1 to 6)</label>
-          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
-            <button onclick="selectStoryEpisode(1)" id="btn-sep-1" class="ep-btn active">Ep 1</button>
-            <button onclick="selectStoryEpisode(2)" id="btn-sep-2" class="ep-btn">Ep 2</button>
-            <button onclick="selectStoryEpisode(3)" id="btn-sep-3" class="ep-btn">Ep 3</button>
-            <button onclick="selectStoryEpisode(4)" id="btn-sep-4" class="ep-btn">Ep 4</button>
-            <button onclick="selectStoryEpisode(5)" id="btn-sep-5" class="ep-btn">Ep 5</button>
-            <button onclick="selectStoryEpisode(6)" id="btn-sep-6" class="ep-btn">Ep 6</button>
+          <div>
+            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎭 အမျိုးအစား</label>
+            <select id="s-genre" style="height: 42px; width: 100%; font-size: 0.8rem;">
+              <option value="horror">👻 သရဲ</option>
+              <option value="mystery">🔍 လျှို့ဝှက်</option>
+              <option value="drama">💔 ဘဝ</option>
+              <option value="motivation">💪 ခွန်အား</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size: 0.72rem; margin-bottom: 2px;">⏱️ ကြာချိန်</label>
+            <select id="s-duration" style="height: 42px; width: 100%; font-size: 0.8rem;">
+              <option value="1">၁ မိနစ်စာ (~105 လုံး)</option>
+              <option value="2">၂ မိနစ်စာ (~210 လုံး)</option>
+              <option value="3">၃ မိနစ်စာ (~315 လုံး)</option>
+            </select>
           </div>
         </div>
 
-        <textarea id="s-script-textarea" rows="5" placeholder="မြန်မာစာသား အရင်ပေါ်လာမည်..." style="font-size: 0.85rem;"></textarea>
-        <audio id="s-audio-player" controls style="width: 100%; height: 38px; display: none;"></audio>
+        <button onclick="handleGenerateStoryTextOnly()" id="btn-gen-text" class="btn" style="background: #0284c7; padding: 12px; font-weight: bold;">
+          <span>✨ ၁။ မြန်မာဇာတ်လမ်းစာသား အရင်ရေးထုတ်မည်</span>
+        </button>
+
+        <textarea id="s-script-textarea" rows="5" placeholder="Reasoning မပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem;"></textarea>
+
+        <!-- Translate to Prompt Button -->
+        <button onclick="handleTranslateToPrompts()" id="btn-translate-prompts" class="btn" style="display: none; background: #6366f1; padding: 10px; font-weight: bold;">
+          <span>🌐 [Translate to Prompt] စာသားမှ English Prompts သို့ ပြောင်းမည်</span>
+        </button>
       </div>
 
-      <div class="card" id="s-step2-card" style="display: none; flex-direction: column; gap: 10px;">
-        <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo (ဓာတ်ပုံများ ဆွဲယူခြင်း)</span>
-        <p style="font-size: 0.72rem; color: #94a3b8; margin: 0;">အထက်ပါ မြန်မာစာသားမှ အခန်းလိုက် English Prompts များ အလိုအလျောက် ထုတ်ယူပြီး AI ဓာတ်ပုံများ ဆွဲပေးမည်။</p>
-
-        <div style="display: flex; gap: 8px; align-items: center;">
-          <select id="s-photo-count" style="height: 42px; font-size: 0.8rem; flex: 1;">
+      <!-- အဆင့် ၂: English Prompt သီးသန့် Box -->
+      <div class="card" id="s-prompts-card" style="display: none; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: bold; color: #a5b4fc;"><span class="step-badge" style="background: #6366f1;">အဆင့် ၂</span> 🎨 English Prompts (ဓာတ်ပုံဖော်ပြချက်များ)</span>
+          <select id="s-photo-count" style="height: 34px; font-size: 0.75rem; width: auto;">
             <option value="2">၂ ပုံ</option>
             <option value="4" selected>၄ ပုံ</option>
             <option value="6">၆ ပုံ</option>
             <option value="8">၈ ပုံ</option>
           </select>
-          <button onclick="handleStep2Photos()" id="btn-step2" class="btn" style="height: 42px; background: #8b5cf6; padding: 0 14px; font-weight: bold; flex: 2; display: flex; align-items: center; justify-content: center;">
-            <span>🖼️ ၂။ ဓာတ်ပုံများ ဆွဲယူမည်</span>
+        </div>
+
+        <textarea id="s-prompts-textarea" rows="5" placeholder="ဘာသာပြန်ထားသော English Prompts များ ဤနေရာတွင် ပေါ်လာမည် (စိတ်ကြိုက် ပြင်ဆင်နိုင်သည်)..." style="font-size: 0.82rem; font-family: monospace;"></textarea>
+
+        <button onclick="handlePromptToPhoto()" id="btn-prompt-to-photo" class="btn" style="background: #8b5cf6; padding: 11px; font-weight: bold;">
+          <span>🖼️ [Prompt to Photo] ဓာတ်ပုံများ စတင်ဆွဲမည်</span>
+        </button>
+
+        <!-- Photo Grid -->
+        <div id="s-photo-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 4px;"></div>
+      </div>
+
+      <!-- အဆင့် ၃: Text to Speech (TTS) & SRT ထုတ်ယူခြင်း Box -->
+      <div class="card" id="s-tts-card" style="display: none; flex-direction: column; gap: 10px;">
+        <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၃</span> 🎙️ Text to Speech (TTS) & SRT စာတန်းထိုး</span>
+
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <select id="s-voice-select" style="height: 42px; font-size: 0.82rem; flex: 1; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 8px;">
+            <option value="edge-nilar" selected>👩 နီလာ (ကြည်လင်)</option>
+            <option value="edge-thiha">👨 သီဟ (ပုံမှန်)</option>
+            <option value="google-my-female">👩 Google (မ)</option>
+          </select>
+          <button onclick="handleGenerateAudioAndSrt()" id="btn-gen-audio" class="btn" style="height: 42px; background: #10b981; padding: 0 16px; font-weight: bold; flex: 1; display: flex; align-items: center; justify-content: center;">
+            <span>🔊 TTS & SRT ထုတ်မည်</span>
           </button>
         </div>
 
-        <div id="s-photo-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
+        <audio id="s-audio-player" controls style="width: 100%; height: 38px; display: none; margin-top: 4px;"></audio>
       </div>
 
-      <div class="card" id="s-step3-card" style="display: none; flex-direction: column; gap: 14px;">
-        <span style="font-weight: bold; color: #facc15;"><span class="step-badge">အဆင့် ၃</span> 🎬 Motion Video Studio</span>
+      <!-- အဆင့် ၄: Motion Video Studio (Aspect Ratio ကို ဤအဆင့်ကျမှ ထည့်သွင်းထားသည်) -->
+      <div class="card" id="s-motion-card" style="display: none; flex-direction: column; gap: 14px; background: #131d31;">
+        <span style="font-weight: bold; color: #facc15;"><span class="step-badge" style="background: #eab308; color: #000;">အဆင့် ၄</span> 🎬 Motion Video Studio</span>
 
+        <!-- Aspect Ratio Selection (ဤနေရာတွင်သာ ရွေးချယ်နိုင်သည်) -->
         <div style="background: #0f172a; padding: 10px; border-radius: 8px; border: 1px solid #334155;">
           <label style="font-size: 0.78rem; margin-bottom: 6px; display: block; color: #38bdf8; font-weight: bold;">📐 ဗီဒီယို ဆိုဒ် (Aspect Ratio) ရွေးချယ်ပါ</label>
           <div style="display: flex; gap: 8px;">
@@ -132,7 +146,6 @@ function initStoryView() {
               <option value="auto" selected>🎵 Auto (အသံနှင့်ညီ)</option>
               <option value="3">၃ စက္ကန့်</option>
               <option value="5">၅ စက္ကန့်</option>
-              <option value="7">၇ စက္ကန့်</option>
             </select>
           </div>
           <div>
@@ -142,23 +155,26 @@ function initStoryView() {
               <option value="zoom-in">🔍 Zoom In</option>
               <option value="zoom-out">🔎 Zoom Out</option>
               <option value="pan-left">⬅️ Pan Left</option>
-              <option value="pan-right">➡️ Pan Right</option>
             </select>
           </div>
         </div>
 
+        <!-- Canvas Video Player -->
         <div id="s-video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
           <canvas id="s-motion-canvas" width="1280" height="720" style="width: 100%; height: 100%; object-fit: contain;"></canvas>
 
+          <!-- Title Overlay -->
           <div id="s-drag-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; white-space: nowrap;">
             ခေါင်းစဉ် စာသား
           </div>
 
+          <!-- Subtitle Overlay with Resize Handle (↘) -->
           <div id="s-drag-subtitle" style="position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
             <span id="s-sub-text">စာတန်းထိုး ပြသမည့်နေရာ</span>
             <div id="s-sub-resize-handle" style="position: absolute; right: -7px; bottom: -7px; width: 22px; height: 22px; background: #10b981; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; font-weight: bold;">↘</div>
           </div>
 
+          <!-- Watermark Overlay with Resize Handle (↘) -->
           <div id="s-drag-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 70px; height: 70px; cursor: move; z-index: 20; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
             <img id="s-wm-preview-img" src="" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" />
             <div id="s-wm-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; font-weight: bold;">↘</div>
@@ -166,10 +182,11 @@ function initStoryView() {
         </div>
 
         <button onclick="toggleMotionPlayback()" class="btn" style="background: #10b981; padding: 12px; font-weight: bold;">
-          <span id="s-play-text">▶ ၃။ Motion Video စမ်းဖွင့်မည်</span>
+          <span id="s-play-text">▶ Motion Video စမ်းဖွင့်မည်</span>
         </button>
 
-        <div style="background: #131d31; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Video Title Controls -->
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">✏️ Video Title / စာသားထည့်</span>
             <button onclick="toggleSTitle()" id="btn-s-title-toggle" class="btn" style="width: auto; padding: 4px 10px; font-size: 0.75rem; background: #475569;">Title: OFF</button>
@@ -180,7 +197,8 @@ function initStoryView() {
           </div>
         </div>
 
-        <div style="background: #131d31; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+        <!-- Watermark Controls -->
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
           <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🖼️ Watermark & တံဆိပ်</span>
           <div style="display: flex; gap: 8px; align-items: center;">
             <input type="file" id="s-wm-file" accept="image/*" onchange="handleSWatermarkUpload(event)" style="font-size: 0.75rem; padding: 6px; flex: 1;" />
@@ -188,7 +206,8 @@ function initStoryView() {
           </div>
         </div>
 
-        <div style="background: #131d31; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
+        <!-- Subtitle (SRT) Settings (၇ မျိုး & ၈ မျိုး ⭕) -->
+        <div style="background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px; display: flex; flex-direction: column; gap: 10px;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
             <div style="display: flex; gap: 6px;">
@@ -238,6 +257,7 @@ function initStoryView() {
           </div>
         </div>
 
+        <!-- Final Export Button -->
         <button onclick="exportMotionHardcodedVideo()" class="btn" style="background: linear-gradient(90deg, #6366f1, #10b981); padding: 14px; font-weight: bold; font-size: 0.95rem;">
           <span>📥 Motion Video အပြီးသတ် Download ရယူမည်</span>
         </button>
@@ -253,7 +273,243 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
-// Aspect Ratio Setter (အဆင့် ၃ တွင် အလုပ်လုပ်ခြင်း)
+// Progress Controller With Model Tracker
+function updateGlobalProgress(title, percent, show = true) {
+  var box = document.getElementById("s-global-progress");
+  var tEl = document.getElementById("s-progress-status-title");
+  var pEl = document.getElementById("s-progress-status-pct");
+  var bEl = document.getElementById("s-progress-status-bar");
+
+  if (!show) {
+    if (box) box.style.display = "none";
+    return;
+  }
+  if (box) box.style.display = "block";
+  if (tEl) tEl.innerText = title;
+  if (pEl) pEl.innerText = percent + "%";
+  if (bEl) bEl.style.width = percent + "%";
+}
+
+// အဆင့် ၁: ပုံပြင်စာသား ရေးထုတ်ခြင်း (စာသားသက်သက်)
+async function handleGenerateStoryTextOnly() {
+  var topic = document.getElementById("s-topic").value.trim();
+  var genre = document.getElementById("s-genre").value;
+  var duration = document.getElementById("s-duration").value;
+  var btn = document.getElementById("btn-gen-text");
+  var textarea = document.getElementById("s-script-textarea");
+  var translateBtn = document.getElementById("btn-translate-prompts");
+
+  if (!topic) return alert("ခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
+
+  btn.disabled = true;
+  updateGlobalProgress("Gemini 2.0 Flash ဖြင့် ချိတ်ဆက်နေပါသည်...", 15, true);
+
+  try {
+    updateGlobalProgress("[Gemini 2.0 Flash] မြန်မာစာသီးသန့် ဇာတ်လမ်းရေးသားနေပါသည်...", 45, true);
+
+    var res = await fetch("/api/generate-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "generate_story_text",
+        topic: topic,
+        genre: genre,
+        durationMinutes: duration
+      })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    s_storyText = data.story_text;
+    textarea.value = data.story_text;
+    document.getElementById("s-title-input").value = topic;
+    updateSTitleText(topic);
+
+    updateGlobalProgress(`[${data.model_used}] ပုံပြင်စာသား ရေးသားမှု ပြီးပါပြီ!`, 100, true);
+    btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
+    translateBtn.style.display = "block";
+
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+
+  } catch (err) {
+    updateGlobalProgress("", 0, false);
+    alert("Error: " + err.message);
+    btn.innerText = "✨ ၁။ မြန်မာဇာတ်လမ်းစာသား အရင်ရေးထုတ်မည်";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// အဆင့် ၂: စာသားမှ English Prompts သို့ Translate လုပ်ခြင်း
+async function handleTranslateToPrompts() {
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var count = document.getElementById("s-photo-count").value;
+  var btn = document.getElementById("btn-translate-prompts");
+  var promptsCard = document.getElementById("s-prompts-card");
+  var promptsTextarea = document.getElementById("s-prompts-textarea");
+
+  if (!scriptText) return alert("စာသား အရင်ထုတ်ပေးပါ");
+
+  btn.disabled = true;
+  updateGlobalProgress("English Photo Prompts ဘာသာပြန်ရန် ပြင်ဆင်နေပါသည်...", 30, true);
+
+  try {
+    updateGlobalProgress("[Gemini Flash] မြန်မာစာသားမှ English Prompts ဘာသာပြန်နေပါသည်...", 65, true);
+
+    var res = await fetch("/api/generate-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "translate_to_prompts",
+        scriptText: scriptText,
+        photoCount: count
+      })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    s_promptsArray = data.prompts_array || [];
+    promptsTextarea.value = data.prompts_text;
+
+    updateGlobalProgress(`[${data.model_used}] English Prompts ဘာသာပြန်ပြီးပါပြီ!`, 100, true);
+    promptsCard.style.display = "flex";
+
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+
+  } catch (err) {
+    updateGlobalProgress("", 0, false);
+    alert("Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// အဆင့် ၃: Prompt to Photo (ဓာတ်ပုံများ ဆွဲယူခြင်း)
+async function handlePromptToPhoto() {
+  var rawText = document.getElementById("s-prompts-textarea").value.trim();
+  var btn = document.getElementById("btn-prompt-to-photo");
+  var grid = document.getElementById("s-photo-grid");
+  var ttsCard = document.getElementById("s-tts-card");
+
+  if (!rawText) return alert("English Prompts များ မရှိသေးပါ");
+
+  // User ပြင်ဆင်ထားသော prompts များကို အပိုဒ်အလိုက် ယူခြင်း
+  var prompts = rawText.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean);
+  if (prompts.length === 0) prompts = s_promptsArray;
+
+  btn.disabled = true;
+  updateGlobalProgress("[Pollinations AI] ဖြင့် ဓာတ်ပုံများ စတင်ဆွဲနေပါသည်...", 20, true);
+
+  try {
+    var w = 1280, h = 720;
+    if (s_aspectRatio === "9:16") { w = 720; h = 1280; }
+    if (s_aspectRatio === "1:1") { w = 720; h = 720; }
+
+    grid.innerHTML = "";
+    grid.style.display = "grid";
+    grid.style.gridTemplateColumns = "repeat(" + Math.min(4, prompts.length) + ", 1fr)";
+
+    for (var i = 0; i < prompts.length; i++) {
+      grid.innerHTML += '<div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="s-img-' + i + '" src="" style="width:100%;height:100%;object-fit:cover;" /></div>';
+    }
+
+    var loadedCount = 0;
+    var totalP = prompts.length;
+
+    var loadPromises = prompts.map(function(p, idx) {
+      return new Promise(function(resolve) {
+        var img = new Image();
+        img.crossOrigin = "anonymous";
+        var seed = Math.floor(Math.random() * 99999);
+        img.src = "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?width=" + w + "&height=" + h + "&nologo=true&seed=" + seed;
+        img.onload = function() {
+          loadedCount++;
+          var pct = Math.round(20 + (loadedCount / totalP) * 80);
+          updateGlobalProgress(`[Pollinations AI] ဓာတ်ပုံ (${loadedCount}/${totalP}) ရေးဆွဲပြီးစီး...`, pct, true);
+
+          var pImg = document.getElementById("s-img-" + idx);
+          if (pImg) pImg.src = img.src;
+          resolve(img);
+        };
+        img.onerror = function() {
+          loadedCount++;
+          resolve(null);
+        };
+      });
+    });
+
+    s_sceneImages = (await Promise.all(loadPromises)).filter(Boolean);
+
+    updateGlobalProgress("[Pollinations AI] ဓာတ်ပုံများ အားလုံး အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!", 100, true);
+    btn.innerText = "✅ ဓာတ်ပုံများ ရရှိပါပြီ (ပြန်ဆွဲနိုင်သည်)";
+    ttsCard.style.display = "flex";
+
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+
+  } catch (err) {
+    updateGlobalProgress("", 0, false);
+    alert("Photo Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// အဆင့် ၄: Text to Speech (TTS) & SRT ထုတ်ယူခြင်း
+async function handleGenerateAudioAndSrt() {
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var voice = document.getElementById("s-voice-select").value;
+  var btn = document.getElementById("btn-gen-audio");
+  var audioEl = document.getElementById("s-audio-player");
+  var motionCard = document.getElementById("s-motion-card");
+
+  if (!scriptText) return alert("စာသား အရင်ရေးပေးပါ");
+
+  btn.disabled = true;
+  updateGlobalProgress("TTS ဆာဗာသို့ အသံဖိုင် တောင်းဆိုနေပါသည်...", 30, true);
+
+  try {
+    updateGlobalProgress("မြန်မာစကားပြော အသံလှိုင်းများ ထုတ်လုပ်နေပါသည်...", 70, true);
+
+    var res = await fetch("/api/generate-story", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "generate_audio",
+        scriptText: scriptText,
+        voice: voice
+      })
+    });
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    var audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), function(c) { return c.charCodeAt(0); })], { type: "audio/mp3" });
+    audioEl.src = URL.createObjectURL(audioBlob);
+    audioEl.style.display = "block";
+    s_audioEl = audioEl;
+
+    audioEl.onloadedmetadata = function() {
+      var dur = audioEl.duration || 60;
+      var srt = generateStorySrt(scriptText, dur);
+      document.getElementById("s-srt-textarea").value = srt;
+      s_srtCues = parseStorySrt(srt);
+      renderMotionFrame(0, dur);
+    };
+
+    updateGlobalProgress(`[${data.model_used}] အသံဖိုင်နှင့် SRT ပြီးပါပြီ!`, 100, true);
+    btn.innerText = "✅ TTS & SRT ရရှိပါပြီ";
+    motionCard.style.display = "flex";
+
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+
+  } catch (err) {
+    updateGlobalProgress("", 0, false);
+    alert("Audio Error: " + err.message);
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// Aspect Ratio Setter (အဆင့် ၄ Motion Studio ထဲတွင်သာ အလုပ်လုပ်သည်)
 function setVideoRatio(ratio, el) {
   s_aspectRatio = ratio;
   document.querySelectorAll(".ratio-btn").forEach(function(b) { b.classList.remove("active"); });
@@ -277,186 +533,7 @@ function setVideoRatio(ratio, el) {
   renderMotionFrame(0, 60);
 }
 
-// အဆင့် ၁: ဇာတ်လမ်းစာသား နှင့် အသံဖိုင် (TTS) ထုတ်ယူခြင်း
-async function handleStep1GenerateStory() {
-  var topic = document.getElementById("s-topic").value.trim();
-  var format = document.getElementById("s-format-select").value;
-  var genre = document.getElementById("s-genre").value;
-  var voice = document.getElementById("s-voice").value;
-  var duration = document.getElementById("s-duration-select").value;
-  var btn = document.getElementById("btn-step1");
-  var textarea = document.getElementById("s-script-textarea");
-  var audioEl = document.getElementById("s-audio-player");
-  var step2Card = document.getElementById("s-step2-card");
-  var epContainer = document.getElementById("s-ep-buttons-container");
-
-  if (!topic) return alert("ခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
-
-  btn.disabled = true;
-  btn.innerText = "⏳ မြန်မာစာသားနှင့် အသံဖိုင် ထုတ်နေပါသည်...";
-  s_currentVoice = voice;
-
-  try {
-    var res = await fetch("/api/generate-story", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "generate_story_and_audio",
-        topic: topic,
-        format: format,
-        genre: genre,
-        voice: voice,
-        durationMinutes: duration
-      })
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-
-    var currentText = "";
-    var currentTitle = topic;
-
-    if (data.format === "series" && data.episodes && Array.isArray(data.episodes)) {
-      s_seriesData = data;
-      epContainer.style.display = "flex";
-      s_currentEpNum = 1;
-      var ep1 = data.episodes[0];
-      currentText = ep1.text;
-      currentTitle = ep1.title;
-    } else {
-      s_seriesData = null;
-      epContainer.style.display = "none";
-      currentText = data.story_text;
-      currentTitle = data.movie_title || topic;
-    }
-
-    textarea.value = currentText;
-    document.getElementById("s-title-input").value = currentTitle;
-    updateSTitleText(currentTitle);
-
-    var audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), function(c) { return c.charCodeAt(0); })], { type: "audio/mp3" });
-    audioEl.src = URL.createObjectURL(audioBlob);
-    audioEl.style.display = "block";
-    s_audioEl = audioEl;
-
-    audioEl.onloadedmetadata = function() {
-      var dur = audioEl.duration || 60;
-      s_srtCues = parseStorySrt(generateStorySrt(currentText, dur));
-      document.getElementById("s-srt-textarea").value = generateStorySrt(currentText, dur);
-    };
-
-    btn.innerText = "✅ ၁။ စာသားနှင့် အသံ အဆင်သင့်ဖြစ်ပါပြီ (ပြန်ထုတ်နိုင်သည်)";
-    step2Card.style.display = "flex";
-
-  } catch (err) {
-    alert("Error: " + err.message);
-    btn.innerText = "✨ ၁။ မြန်မာစာသားနှင့် အသံဖိုင် အရင်ထုတ်မည်";
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-// Series Episode ခလုတ် ရွေးချယ်ခြင်း
-async function selectStoryEpisode(epNum) {
-  if (!s_seriesData || !s_seriesData.episodes) return;
-  s_currentEpNum = epNum;
-
-  for (var i = 1; i <= 6; i++) {
-    var b = document.getElementById("btn-sep-" + i);
-    if (b) {
-      if (i === epNum) b.classList.add("active");
-      else b.classList.remove("active");
-    }
-  }
-
-  var ep = s_seriesData.episodes[epNum - 1];
-  document.getElementById("s-script-textarea").value = ep.text;
-  document.getElementById("s-title-input").value = ep.title;
-  updateSTitleText(ep.title);
-
-  // အသံဖိုင် အသစ်ရယူခြင်း
-  var res = await fetch("/api/generate-story", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "generate_audio", scriptText: ep.text, voice: s_currentVoice })
-  });
-  var data = await res.json();
-  if (res.ok) {
-    var audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), function(c) { return c.charCodeAt(0); })], { type: "audio/mp3" });
-    s_audioEl.src = URL.createObjectURL(audioBlob);
-    s_audioEl.onloadedmetadata = function() {
-      var dur = s_audioEl.duration || 60;
-      s_srtCues = parseStorySrt(generateStorySrt(ep.text, dur));
-      document.getElementById("s-srt-textarea").value = generateStorySrt(ep.text, dur);
-      renderMotionFrame(0, dur);
-    };
-  }
-}
-
-// အဆင့် ၂: Prompt to Photo (မြန်မာစာမှ English Prompts ထုတ်ယူပြီး ပုံဆွဲခြင်း)
-async function handleStep2Photos() {
-  var scriptText = document.getElementById("s-script-textarea").value.trim();
-  var count = parseInt(document.getElementById("s-photo-count").value) || 4;
-  var btn = document.getElementById("btn-step2");
-  var grid = document.getElementById("s-photo-grid");
-  var step3Card = document.getElementById("s-step3-card");
-
-  if (!scriptText) return alert("စာသား အရင်ထုတ်ပေးပါ");
-
-  btn.disabled = true;
-  btn.innerText = "⏳ English Prompts ဘာသာပြန်ပြီး ဓာတ်ပုံများ ဆွဲနေသည်...";
-
-  try {
-    var res = await fetch("/api/generate-story", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "generate_prompts", scriptText: scriptText, photoCount: count })
-    });
-    var data = await res.json();
-    if (!res.ok) throw new Error(data.error);
-
-    var prompts = data.prompts || [];
-    var w = 1280, h = 720;
-    if (s_aspectRatio === "9:16") { w = 720; h = 1280; }
-    if (s_aspectRatio === "1:1") { w = 720; h = 720; }
-
-    grid.innerHTML = "";
-    grid.style.display = "grid";
-    grid.style.gridTemplateColumns = "repeat(" + Math.min(4, count) + ", 1fr)";
-
-    for (var i = 0; i < count; i++) {
-      grid.innerHTML += '<div style="aspect-ratio: 16/9; background: #0f172a; border-radius: 6px; overflow: hidden;"><img id="s-img-' + i + '" src="" style="width:100%;height:100%;object-fit:cover;" /></div>';
-    }
-
-    var loadPromises = prompts.map(function(p, idx) {
-      return new Promise(function(resolve) {
-        var img = new Image();
-        img.crossOrigin = "anonymous";
-        var seed = Math.floor(Math.random() * 99999);
-        img.src = "https://image.pollinations.ai/prompt/" + encodeURIComponent(p) + "?width=" + w + "&height=" + h + "&nologo=true&seed=" + seed;
-        img.onload = function() {
-          var pImg = document.getElementById("s-img-" + idx);
-          if (pImg) pImg.src = img.src;
-          resolve(img);
-        };
-        img.onerror = function() { resolve(null); };
-      });
-    });
-
-    s_sceneImages = (await Promise.all(loadPromises)).filter(Boolean);
-
-    btn.innerText = "✅ ၂။ ဓာတ်ပုံများ အဆင်သင့်ဖြစ်ပါပြီ (ပြန်ဆွဲနိုင်သည်)";
-    step3Card.style.display = "flex";
-    renderMotionFrame(0, 60);
-
-  } catch (err) {
-    alert("Photo Error: " + err.message);
-    btn.innerText = "🖼️ ၂။ ဓာတ်ပုံများ ဆွဲယူမည်";
-  } finally {
-    btn.disabled = false;
-  }
-}
-
-// 2.5D Motion Pan/Zoom Rendering
+// 2.5D Motion Canvas Loop
 function renderMotionFrame(time, duration) {
   var canvas = document.getElementById("s-motion-canvas");
   if (!canvas) return;
@@ -482,7 +559,6 @@ function renderMotionFrame(time, duration) {
   if (s_motionStyle === "zoom-in") scale = 1.0 + prog * 0.15;
   else if (s_motionStyle === "zoom-out") scale = 1.15 - prog * 0.15;
   else if (s_motionStyle === "pan-left") { scale = 1.08; panX = (0.5 - prog) * 50; }
-  else if (s_motionStyle === "pan-right") { scale = 1.08; panX = (prog - 0.5) * 50; }
   else { scale = 1.0 + prog * 0.12; }
 
   ctx.save();
@@ -501,7 +577,7 @@ function toggleMotionPlayback() {
     s_audioEl.play();
     if (s_currentBgm) s_currentBgm.play();
     s_isMotionPlaying = true;
-    btnText.innerText = "⏸ ခေတ္တရပ်မည်";
+    btnText.innerText = "⏸ Motion Video ခေတ္တရပ်မည်";
 
     function loop() {
       if (!s_isMotionPlaying) return;
@@ -516,11 +592,12 @@ function toggleMotionPlayback() {
       s_animFrameId = requestAnimationFrame(loop);
     }
     s_animFrameId = requestAnimationFrame(loop);
+
   } else {
     s_audioEl.pause();
     if (s_currentBgm) s_currentBgm.pause();
     s_isMotionPlaying = false;
-    btnText.innerText = "▶ ၃။ Motion Video စမ်းဖွင့်မည်";
+    btnText.innerText = "▶ Motion Video စမ်းဖွင့်မည်";
     cancelAnimationFrame(s_animFrameId);
   }
 }
@@ -746,9 +823,7 @@ function generateStorySrt(scriptText, totalDuration) {
   var sentences = scriptText.match(/[^။!?\n]+[။!?\n]?/g) || [scriptText];
   var chunks = sentences.map(function(s) { return s.trim(); }).filter(Boolean);
   var totalLength = chunks.reduce(function(acc, c) { return acc + c.length; }, 0);
-
-  var srt = "";
-  var currentStart = 0;
+  var srt = "", currentStart = 0;
 
   chunks.forEach(function(chunk, index) {
     var chunkDur = totalDuration * (chunk.length / totalLength);
@@ -895,14 +970,7 @@ async function exportMotionHardcodedVideo() {
 }
 
 window.initStoryView = initStoryView;
-window.initStory = initStoryView;
-window.renderStory = initStoryView;
-
-if (document.readyState !== "loading") {
-  initStoryView();
-} else {
-  document.addEventListener("DOMContentLoaded", initStoryView);
-}
+if (document.readyState !== "loading") { initStoryView(); } else { document.addEventListener("DOMContentLoaded", initStoryView); }
 
 document.addEventListener("click", function(e) {
   if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)") || e.target.closest("button:nth-child(3)"))) {
