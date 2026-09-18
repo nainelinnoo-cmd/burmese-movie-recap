@@ -101,14 +101,14 @@ function initStoryView() {
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end;">
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
             <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">🎬 ဇာတ်လမ်းပုံစံ</label>
-            <select id="s-format-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <select id="s-format-select" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="movie" selected>🎬 Movie (တစ်ပိုင်း)</option>
               <option value="series">📺 Series (၆ ပိုင်း)</option>
             </select>
           </div>
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
             <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">🎭 အမျိုးအစား</label>
-            <select id="s-genre-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <select id="s-genre-select" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="horror">👻 သရဲ</option>
               <option value="mystery">🔍 လျှို့ဝှက်</option>
               <option value="drama">💔 ဘဝ</option>
@@ -117,7 +117,7 @@ function initStoryView() {
           </div>
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
             <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">⏱️ ကြာချိန်</label>
-            <select id="s-duration-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <select id="s-duration-select" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="1">၁ မိနစ်</option>
               <option value="2">၂ မိနစ်</option>
               <option value="3">၃ မိနစ်</option>
@@ -165,11 +165,10 @@ function initStoryView() {
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo & Motion Settings</span>
         </div>
 
-        <!-- မျဉ်းညီစေရန် align-items: end နှင့် label height 28px ထည့်သွင်းထားသည် -->
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end;">
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🖼️ ပုံအရေအတွက်</label>
-            <select id="s-photo-count" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <label style="font-size: 0.72rem; height: 24px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🖼️ ပုံအရေအတွက်</label>
+            <select id="s-photo-count" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="2">၂ ပုံ</option>
               <option value="4" selected>၄ ပုံ</option>
               <option value="6">၆ ပုံ</option>
@@ -177,8 +176,8 @@ function initStoryView() {
             </select>
           </div>
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">⏱️ Clip Time</label>
-            <select id="s-clip-duration" onchange="s_clipDurationMode = this.value" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <label style="font-size: 0.72rem; height: 24px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">⏱️ Clip Time</label>
+            <select id="s-clip-duration" onchange="s_clipDurationMode = this.value" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="auto" selected>🎵 Auto</option>
               <option value="3">၃ စက္ကန့်</option>
               <option value="5">၅ စက္ကန့်</option>
@@ -186,8 +185,8 @@ function initStoryView() {
             </select>
           </div>
           <div style="display: flex; flex-direction: column; justify-content: flex-end;">
-            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🎬 Motion စတိုင်</label>
-            <select id="s-motion-style" onchange="s_motionStyle = this.value" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+            <label style="font-size: 0.72rem; height: 24px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🎬 Motion စတိုင်</label>
+            <select id="s-motion-style" onchange="s_motionStyle = this.value" style="height: 44px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="dynamic" selected>🔀 Dynamic</option>
               <option value="zoom-in">🔍 Zoom In</option>
               <option value="zoom-out">🔎 Zoom Out</option>
@@ -204,14 +203,14 @@ function initStoryView() {
         <div id="s-photo-preview-grid" style="display: none; grid-template-columns: repeat(4, 1fr); gap: 6px;"></div>
       </div>
 
-      <!-- အဆင့် ၃: Text to Speech -->
+      <!-- အဆင့် ၃: Text to Speech (အမြင့် 44px မျဉ်းတစ်ပြေးတည်း ကွက်တိညီသော ခလုတ်များ) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၃</span> 🎙️ Text to Speech</span>
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center;">
-          <select id="s-voice-select" style="height: 42px; font-size: 0.85rem; flex: 1; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 8px;">
+          <select id="s-voice-select" style="height: 44px; font-size: 0.85rem; flex: 1; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 10px; box-sizing: border-box;">
             <optgroup label="Edge-TTS">
               <option value="edge-nilar" selected>👩 နီလာ (ကြည်လင်)</option>
               <option value="edge-nilar-warm">🌸 နီလာ (နွေးထွေး)</option>
@@ -223,7 +222,7 @@ function initStoryView() {
               <option value="google-my-male">👨 Google (ကျား)</option>
             </optgroup>
           </select>
-          <button onclick="handleTextToSpeech()" id="btn-gen-audio" class="btn" style="width: auto; background: #10b981; padding: 8px 14px; font-size: 0.85rem;">
+          <button onclick="handleTextToSpeech()" id="btn-gen-audio" class="btn" style="height: 44px; width: auto; background: #10b981; padding: 0 16px; font-size: 0.85rem; display: flex; align-items: center; justify-content: center; box-sizing: border-box; margin: 0; white-space: nowrap;">
             <span>🔊 အသံထုတ်မည်</span>
           </button>
         </div>
@@ -490,7 +489,7 @@ function selectStoryEpisode(epNum) {
   updateSTitleText(ep.title);
 }
 
-// အဆင့် ၂: Prompt to Photo (Download ပြီးစီးမှုအလိုက် % တိကျစွာ ပြသခြင်း)
+// အဆင့် ၂: Prompt to Photo
 async function handlePromptToPhoto() {
   var scriptText = document.getElementById("s-script-textarea").value.trim();
   var btn = document.getElementById("btn-prompt-photo");
@@ -617,7 +616,7 @@ async function handleTextToSpeech() {
   }
 }
 
-// 2.5D Motion Pan/Zoom & Custom Styles Rendering
+// 2.5D Motion Rendering
 function renderMotionFrame(time, duration) {
   var canvas = document.getElementById("s-motion-canvas");
   if (!canvas) return;
@@ -655,7 +654,6 @@ function renderMotionFrame(time, duration) {
     scale = 1.08;
     panX = (prog - 0.5) * 50;
   } else {
-    // Dynamic
     if (idx % 4 === 0) {
       scale = 1.0 + prog * 0.12;
     } else if (idx % 4 === 1) {
@@ -1140,7 +1138,6 @@ async function exportMotionHardcodedVideo() {
   exportLoop();
 }
 
-// Router Hooks
 window.initStoryView = initStoryView;
 window.initStory = initStoryView;
 window.renderStory = initStoryView;
