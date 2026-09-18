@@ -28,20 +28,22 @@ function buildSrtString(scriptText, totalDuration) {
   return srt;
 }
 
-// လက်ရှိ Gemini 3 Series Models များကို အစဉ်လိုက် ခေါ်ယူခြင်း
 async function runGeminiRecap(prompt) {
-  const geminiModels = [
+  const ACTIVE_MODELS = [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
     "gemini-3.5-flash",
-    "gemini-2.5-flash"
+    "gemini-3.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite"
   ];
 
-  let lastGeminiError = null;
+  let lastError = null;
 
   if (process.env.GEMINI_API_KEY) {
-    for (const model of geminiModels) {
+    for (const model of ACTIVE_MODELS) {
       try {
         const response = await ai.models.generateContent({
           model: model,
@@ -49,15 +51,15 @@ async function runGeminiRecap(prompt) {
         });
         if (response && response.text) return response.text.trim();
       } catch (err) {
-        lastGeminiError = err.message;
-        console.warn(`Gemini (${model}) failed:`, err.message);
+        lastError = err.message;
+        console.warn(`Gemini (${model}) error:`, err.message);
       }
     }
   } else {
-    lastGeminiError = "Vercel တွင် GEMINI_API_KEY မထည့်သွင်းရသေးပါ";
+    lastError = "GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ";
   }
 
-  // Gemini အဆင်မပြေပါက Groq ရှိ သေချာပေါက် အလုပ်လုပ်သော llama-3.3-70b-versatile ဖြင့် Fallback ပြုလုပ်ခြင်း
+  // Fallback to Groq
   try {
     const gRes = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
@@ -70,10 +72,10 @@ async function runGeminiRecap(prompt) {
     const text = gRes.choices[0]?.message?.content?.trim();
     if (text) return text;
   } catch (groqErr) {
-    console.warn("Groq fallback also failed:", groqErr.message);
+    console.warn("Groq fallback error:", groqErr.message);
   }
 
-  throw new Error(`Gemini Error (${lastGeminiError})`);
+  throw new Error(`AI Model Error: ${lastError}`);
 }
 
 module.exports = async (req, res) => {
@@ -83,7 +85,6 @@ module.exports = async (req, res) => {
     const { audioBase64, voice, tone, videoDuration } = req.body;
     if (!audioBase64) return res.status(400).json({ error: "အသံဖိုင်ဒေတာ မပါဝင်ပါ" });
 
-    // ၁။ STT: Groq Whisper
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const file = await toFile(audioBuffer, "audio.wav");
     const transcript = await groq.audio.transcriptions.create({
@@ -91,7 +92,6 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // ၂။ LLM: Gemini 3.x Flash ဖြင့် Recap ရေးသားခြင်း
     const duration = videoDuration || 60;
     const targetWordCount = Math.round((duration / 60) * 135);
 
@@ -100,7 +100,6 @@ IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWo
 
     const recapScript = await runGeminiRecap(prompt);
 
-    // ၃။ TTS: Hugging Face Edge-TTS
     const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -121,7 +120,6 @@ IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWo
       }
     }
 
-    // ၄။ SRT File တည်ဆောက်ခြင်း
     const srtText = buildSrtString(recapScript, duration);
 
     return res.status(200).json({
