@@ -1,10 +1,6 @@
-const { GoogleGenAI } = require("@google/genai");
-const { Groq } = require("groq-sdk");
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
+// ၁။ Google Translate TTS
 async function fetchGoogleTTS(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
@@ -29,10 +25,11 @@ async function fetchGoogleTTS(text) {
   return Buffer.concat(audioBuffers).toString("base64");
 }
 
+// ၂။ Edge-TTS
 async function fetchEdgeTTS(text, voice = "edge-thiha") {
   const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 6000);
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
 
   let postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
     method: "POST",
@@ -76,69 +73,96 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, "edge-thiha"); } catch (e) { return await fetchGoogleTTS(text); }
 }
 
-function withTimeout(promise, ms = 8000) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
-  ]);
-}
-
+// ၃။ တိုက်ရိုက်ခေါ်ယူမည့် AI Engine
 async function runAIWithModel(prompt, systemInstruction = "") {
-  const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash"];
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
 
-  if (process.env.GEMINI_API_KEY) {
-    for (const m of GEMINI_MODELS) {
+  // အဆင့် ၁: Gemini REST API တိုက်ရိုက် ချိတ်ဆက်ခြင်း
+  if (geminiKey) {
+    const geminiModels = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    for (const m of geminiModels) {
       try {
-        const response = await withTimeout(
-          ai.models.generateContent({
-            model: m,
-            contents: prompt,
-            config: {
-              systemInstruction: systemInstruction || undefined,
-              safetySettings: [
-                { category: "HARM_CATEGORY_HARASSMENT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_HATE_SPEECH", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold: "BLOCK_NONE" },
-                { category: "HARM_CATEGORY_DANGEROUS_CONTENT", threshold: "BLOCK_NONE" }
-              ]
-            }
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${geminiKey}`;
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 15000);
+
+        const gRes = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            contents: [{ parts: [{ text: prompt }] }],
+            systemInstruction: systemInstruction ? { parts: [{ text: systemInstruction }] } : undefined
           }),
-          7000
-        );
-        if (response && response.text) {
-          return { text: response.text.trim(), modelUsed: m };
+          signal: controller.signal
+        });
+        clearTimeout(timeout);
+
+        if (gRes.ok) {
+          const data = await gRes.json();
+          const out = data.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (out && out.trim()) return { text: out.trim(), modelUsed: m };
         }
       } catch (e) {}
     }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  // အဆင့် ၂: Groq API တိုက်ရိုက် ချိတ်ဆက်ခြင်း
+  if (groqKey) {
     try {
-      const gRes = await withTimeout(
-        groq.chat.completions.create({
-          model: "llama-3.1-8b-instant",
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${groqKey}`
+        },
+        body: JSON.stringify({
+          model: "llama-3.3-70b-versatile",
           messages: [
             ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
             { role: "user", content: prompt }
           ]
         }),
-        6000
-      );
-      const content = gRes.choices[0]?.message?.content?.trim();
-      if (content) return { text: content, modelUsed: "Groq (Llama-3.1)" };
-    } catch (err) {}
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+
+      if (groqRes.ok) {
+        const data = await groqRes.json();
+        const out = data.choices?.[0]?.message?.content;
+        if (out && out.trim()) return { text: out.trim(), modelUsed: "Groq (Llama-3.3)" };
+      }
+    } catch (e) {}
   }
 
+  // အဆင့် ၃: Pollinations AI POST (Key မလိုဘဲ အမြဲအလုပ်လုပ်သော Fallback)
   try {
-    const pUrl = `https://text.pollinations.ai/${encodeURIComponent(prompt)}?model=openai`;
-    const res = await withTimeout(fetch(pUrl), 7000);
-    if (res.ok) {
-      const pText = await res.text();
-      if (pText) return { text: pText.trim(), modelUsed: "Pollinations AI" };
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 18000);
+
+    const pRes = await fetch("https://text.pollinations.ai/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+          { role: "user", content: prompt }
+        ]
+      }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
+
+    if (pRes.ok) {
+      const pText = await pRes.text();
+      if (pText && pText.trim()) return { text: pText.trim(), modelUsed: "Pollinations AI" };
     }
   } catch (e) {}
 
-  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ ထပ်မံကြိုးစားပေးပါ။");
+  throw new Error("AI ဆာဗာများနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။ Vercel Environment Variables ထဲတွင် GEMINI_API_KEY မှန်မမှန် စစ်ဆေးပေးပါ။");
 }
 
 function filterStrictBurmeseStory(rawText) {
