@@ -1,8 +1,6 @@
-const { GoogleGenAI } = require("@google/genai");
 const { Groq } = require("groq-sdk");
 
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
 // ၁။ Google Translate TTS
@@ -109,56 +107,124 @@ async function fetchAudioSafe(text, voice) {
   }
 }
 
-// ၃။ ပထမမူရင်း Gemini Models & Groq Model စနစ်
-async function runGeminiOrGroq(prompt, isJson = false) {
-  const ACTIVE_MODELS = [
-    "gemini-2.5-flash",
-    "gemini-3.5-flash",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash"
+// ၃။ Google တရားဝင် Gemini Models စစ်စစ်များ (Direct REST API ဖြင့် ခေါ်ယူခြင်း)
+async function callOfficialGemini(prompt, isJson = false) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) return null;
+
+  const validModels = [
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro"
   ];
 
-  if (process.env.GEMINI_API_KEY) {
-    for (const model of ACTIVE_MODELS) {
-      try {
-        const config = isJson ? { responseMimeType: "application/json" } : {};
-        const response = await ai.models.generateContent({
-          model: model,
-          contents: prompt,
-          config: config
-        });
-        if (response && response.text) return response.text.trim();
-      } catch (err) {
-        // Fallback to next active model
+  for (const model of validModels) {
+    try {
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+      const payload = {
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: isJson ? { responseMimeType: "application/json" } : {}
+      };
+
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) return text.trim();
       }
+    } catch (e) {
+      console.warn(`Gemini (${model}) failed:`, e.message);
     }
   }
+  return null;
+}
 
-  // မူရင်း Groq Fallback Model
-  try {
-    const gRes = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
-      messages: [
-        { role: "system", content: isJson ? "You output strictly valid JSON only." : "You are a creative Burmese storyteller." },
-        { role: "user", content: prompt }
-      ],
-      response_format: isJson ? { type: "json_object" } : undefined
-    });
-    const content = gRes.choices[0]?.message?.content?.trim();
-    if (content) return content;
-  } catch (err) {
-    // llama-3.3-70b မရရှိပါက အလိုအလျောက် fallback ခံပေးခြင်း
-    const gRes2 = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
-      messages: [
-        { role: "system", content: isJson ? "You output strictly valid JSON only." : "You are a creative Burmese storyteller." },
-        { role: "user", content: prompt }
-      ],
-      response_format: isJson ? { type: "json_object" } : undefined
-    });
-    return gRes2.choices[0]?.message?.content?.trim();
+// ၄။ Groq Fallback
+async function callGroqFallback(prompt, isJson = false) {
+  if (!process.env.GROQ_API_KEY) return null;
+
+  const groqModels = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
+    "llama3-70b-8192",
+    "llama3-8b-8192"
+  ];
+
+  for (const m of groqModels) {
+    try {
+      const gRes = await groq.chat.completions.create({
+        model: m,
+        messages: [
+          { role: "system", content: isJson ? "You output strictly valid JSON only." : "You are a creative Burmese storyteller." },
+          { role: "user", content: prompt }
+        ],
+        response_format: isJson ? { type: "json_object" } : undefined
+      });
+      const content = gRes.choices[0]?.message?.content?.trim();
+      if (content) return content;
+    } catch (err) {
+      console.warn(`Groq (${m}) failed:`, err.message);
+    }
   }
+  return null;
+}
+
+// ၅။ အာမခံ Fallback (Pollinations AI - Key မလို၊ 100% Free & Always Online)
+async function callPollinationsAI(prompt, isJson = false) {
+  try {
+    const res = await fetch("https://text.pollinations.ai/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messages: [
+          { role: "system", content: isJson ? "You output strictly valid JSON only without markdown formatting." : "You are a creative Burmese storyteller." },
+          { role: "user", content: prompt }
+        ],
+        jsonMode: isJson
+      })
+    });
+    if (res.ok) {
+      const text = await res.text();
+      if (text) return text.trim();
+    }
+  } catch (e) {
+    console.warn("Pollinations text failed:", e.message);
+  }
+  return null;
+}
+
+// Bulletproof AI Engine (အဆင့် ၃ ဆင့်ဖြင့် မည်သည့်အခါမှ မကျရှုံးစေသော စနစ်)
+async function runReliableStoryAI(prompt, isJson = false) {
+  // အဆင့် ၁: Google တရားဝင် Gemini Flash ဖြင့် အရင်ခေါ်သည်
+  let result = await callOfficialGemini(prompt, isJson);
+  if (result) return result;
+
+  // အဆင့် ၂: Groq ဖြင့် စမ်းသပ်သည်
+  result = await callGroqFallback(prompt, isJson);
+  if (result) return result;
+
+  // အဆင့် ၃: Key မလိုသော Pollinations AI ဖြင့် မဖြစ်မနေ ထုတ်ပေးသည်
+  result = await callPollinationsAI(prompt, isJson);
+  if (result) return result;
+
+  throw new Error("AI မော်ဒယ်များအားလုံး ခေတ္တ အလုပ်မလုပ်နိုင်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
+}
+
+function cleanJsonString(raw) {
+  if (!raw) return "{}";
+  let cleaned = raw.trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.replace(/^```\s*/, "").replace(/\s*```$/, "");
+  }
+  return cleaned.trim();
 }
 
 module.exports = async (req, res) => {
@@ -167,7 +233,7 @@ module.exports = async (req, res) => {
   try {
     const { action, topic, genre, format, durationMinutes, scriptText, voice } = req.body;
 
-    // အသံဖိုင် သီးသန့် ထုတ်ယူခြင်း (Step 3 & Recaps Studio Fallback)
+    // အဆင့် ၃: Text to Speech (အသံဖိုင် သီးသန့် ထုတ်ယူခြင်း)
     if (action === "generate_audio" || req.body.fetchAudioOnly) {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const audioBase64 = await fetchAudioSafe(scriptText, voice);
@@ -187,8 +253,8 @@ Output strictly valid JSON:
     "cinematic scene 4..."
   ]
 }`;
-      const jsonStr = await runGeminiOrGroq(prompt, true);
-      return res.status(200).json(JSON.parse(jsonStr));
+      const jsonStr = await runReliableStoryAI(prompt, true);
+      return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
     }
 
     // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1 to 6 သို့မဟုတ် Movie)
@@ -212,8 +278,8 @@ Output strictly valid JSON:
     {"ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."}
   ]
 }`;
-        const jsonStr = await runGeminiOrGroq(prompt, true);
-        return res.status(200).json(JSON.parse(jsonStr));
+        const jsonStr = await runReliableStoryAI(prompt, true);
+        return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
       } else {
         const prompt = `Write a complete movie story script in Burmese about: "${topic}" (${genre}).
 Length: approximately ${words} Burmese words. Break into short spoken phrases using commas.
@@ -222,8 +288,8 @@ Output strictly valid JSON:
   "movie_title": "${topic}",
   "story_text": "ဇာတ်လမ်းစာသား..."
 }`;
-        const jsonStr = await runGeminiOrGroq(prompt, true);
-        return res.status(200).json(JSON.parse(jsonStr));
+        const jsonStr = await runReliableStoryAI(prompt, true);
+        return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
       }
     }
 
