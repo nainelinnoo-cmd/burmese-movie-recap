@@ -49,11 +49,9 @@ async function fetchBurmeseVoice(text, voice) {
 
 async function runGeminiStoryJson(prompt) {
   const geminiModels = [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-2.5-flash"
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash"
   ];
 
   let lastGeminiError = null;
@@ -73,7 +71,7 @@ async function runGeminiStoryJson(prompt) {
       }
     }
   } else {
-    lastGeminiError = "Vercel တွင် GEMINI_API_KEY မထည့်သွင်းရသေးပါ";
+    lastGeminiError = "GEMINI_API_KEY မရှိပါ";
   }
 
   // Fallback to Groq
@@ -92,7 +90,7 @@ async function runGeminiStoryJson(prompt) {
     console.warn("Groq fallback failed:", groqErr.message);
   }
 
-  throw new Error(`Gemini Error (${lastGeminiError})`);
+  throw new Error(`AI Model Error: ${lastGeminiError}`);
 }
 
 module.exports = async (req, res) => {
@@ -108,16 +106,32 @@ module.exports = async (req, res) => {
 
     if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
-    const wordsPerMinute = 130;
-    const totalWords = (parseInt(durationMinutes) || 2) * wordsPerMinute;
+    const selectedMins = parseInt(durationMinutes) || 1;
+    const wordsPerMinute = 135;
 
     if (format === "movie") {
+      const totalWords = selectedMins * wordsPerMinute;
       const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
-      const epWords = Math.round(totalWords / 6);
-      const prompt = `Write a 6-episode continuous story series in Burmese for topic: "${topic}" (${genre}). Each episode must have around ${epWords} words. Output JSON: {"series_title": "ခေါင်းစဉ်", "episodes": [{"ep": 1, "title": "အပိုင်း ၁", "text": "စာသား"}, {"ep": 2, "title": "အပိုင်း ၂", "text": "စာသား"}, {"ep": 3, "title": "အပိုင်း ၃", "text": "စာသား"}, {"ep": 4, "title": "အပိုင်း ၄", "text": "စာသား"}, {"ep": 5, "title": "အပိုင်း ၅", "text": "စာသား"}, {"ep": 6, "title": "အပိုင်း ၆", "text": "စာသား"}]}`;
+      // Series: Episode တစ်ခုစီတိုင်းကို ရွေးချယ်ထားသော မိနစ်စာနှုန်းဖြင့် ၆ ပိုင်းလုံး အပြည့်အစုံ ရေးသားခြင်း
+      const epWords = selectedMins * wordsPerMinute;
+      const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}). 
+IMPORTANT: Each episode MUST contain around ${epWords} Burmese words so that each episode lasts approximately ${selectedMins} minute(s) when read aloud.
+Total story spans across all 6 episodes.
+Output strictly valid JSON: 
+{
+  "series_title": "ခေါင်းစဉ်",
+  "episodes": [
+    {"ep": 1, "title": "အပိုင်း ၁ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
+    {"ep": 2, "title": "အပိုင်း ၂ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
+    {"ep": 3, "title": "အပိုင်း ၃ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
+    {"ep": 4, "title": "အပိုင်း ၄ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
+    {"ep": 5, "title": "အပိုင်း ၅ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
+    {"ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"}
+  ]
+}`;
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json({ series: JSON.parse(jsonStr) });
     }
