@@ -18,7 +18,6 @@ function initRecapsView() {
 
   container.innerHTML = `
     <style>
-      /* အသံသရုပ်ဆောင် Box - Blue-Black Background & Clean Styling */
       #recap-voice-actor {
         background-color: #080e1a !important;
         border: 1.5px solid #1e3a8a !important;
@@ -122,7 +121,7 @@ function initRecapsView() {
       </div>
 
       <button id="recap-generate-btn" onclick="handleGenerateRecap()" class="btn btn-recap">
-        <span>▶ Recap ဗီဒီယို ဖန်တီးမည်</span>
+        <span>▶ Recap ဗီဒီယို ဖန်တီးမည် (AI Scene Vision ပါဝင်သည်)</span>
       </button>
 
       <!-- Progress Container -->
@@ -145,7 +144,7 @@ function initRecapsView() {
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Player Wrapper (Screen ပေါ်တွင် အပြည့်အဝ ဖုံးလွှမ်းနိုင်စေရန် Dynamic Aspect Ratio ထည့်သွင်းထားသည်) -->
+        <!-- Video Player Wrapper (Screen အပြည့်ပြသခြင်း) -->
         <div id="video-wrapper" style="position: relative; width: 100%; max-height: 72vh; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; user-select: none; margin: 0 auto; display: flex; align-items: center; justify-content: center;">
           <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain; display: block;"></video>
 
@@ -301,7 +300,6 @@ function initRecapsView() {
   setupSubtitleTouchResize();
 }
 
-// Video ရွေးချယ်ချိန်တွင် Video ၏ အချိုးအစားအတိုင်း Wrapper ကို ပြောင်းလဲပေးခြင်း (Screen ပေါ် အပြည့်ပေါ်စေရန်)
 function handleVideoFileSelect(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -349,7 +347,6 @@ function setupAudioMixerListeners() {
   });
 }
 
-// BGM Upload & Remove စနစ်
 function handleBgmFileSelect(e) {
   if (e.target.files && e.target.files[0]) {
     const bgmUrl = URL.createObjectURL(e.target.files[0]);
@@ -370,7 +367,6 @@ function removeBgmAudio() {
   document.getElementById("btn-remove-bgm").style.display = "none";
 }
 
-// Watermark Upload & Remove စနစ်
 function handleWatermarkUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -701,6 +697,67 @@ function parseSrtCues(srtText) {
   }).filter(Boolean);
 }
 
+// ဗီဒီယိုမှ မြင်ကွင်း Snapshot ၅ ပုံ အလိုအလျောက် ဖြတ်ယူခြင်း (Gemini Vision အတွက်)
+async function extractVideoKeyframes(file, count = 5) {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    video.preload = "auto";
+    video.muted = true;
+    video.playsInline = true;
+    const url = URL.createObjectURL(file);
+    video.src = url;
+
+    video.onloadedmetadata = async () => {
+      const duration = video.duration || 10;
+      const timestamps = [];
+      for (let i = 1; i <= count; i++) {
+        timestamps.push((duration / (count + 1)) * i);
+      }
+
+      const canvas = document.createElement("canvas");
+      const width = 320;
+      const height = Math.round((video.videoHeight / (video.videoWidth || 1)) * width) || 180;
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+
+      const frames = [];
+
+      for (const t of timestamps) {
+        await new Promise((res) => {
+          let done = false;
+          const timer = setTimeout(() => {
+            if (!done) { done = true; res(); }
+          }, 800);
+
+          video.currentTime = t;
+          video.onseeked = () => {
+            if (!done) {
+              done = true;
+              clearTimeout(timer);
+              try {
+                ctx.drawImage(video, 0, 0, width, height);
+                const dataUrl = canvas.toDataURL("image/jpeg", 0.5);
+                const base64 = dataUrl.split(",")[1];
+                if (base64) frames.push(base64);
+              } catch (e) {}
+              res();
+            }
+          };
+        });
+      }
+
+      URL.revokeObjectURL(url);
+      resolve(frames);
+    };
+
+    video.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve([]);
+    };
+  });
+}
+
 async function extractAudioOptimized(file) {
   const arrayBuffer = await file.arrayBuffer();
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -749,7 +806,7 @@ async function extractAudioOptimized(file) {
   let binary = "";
   const bytes = new Uint8Array(outBuffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  
+
   return { audioBase64: btoa(binary), duration: audioBuffer.duration };
 }
 
@@ -778,20 +835,24 @@ async function handleGenerateRecap() {
   pContainer.style.display = "block";
 
   try {
-    pTitle.innerText = "ဗီဒီယိုအသံ ချုံ့ယူနေပါသည်...";
-    pPercent.innerText = "25%";
-    pBar.style.width = "25%";
+    pTitle.innerText = "ဗီဒီယိုအသံနှင့် မြင်ကွင်း Snapshots များ ဖတ်ယူနေပါသည်...";
+    pPercent.innerText = "30%";
+    pBar.style.width = "30%";
 
-    const { audioBase64, duration } = await extractAudioOptimized(file);
+    // အသံနှင့် မြင်ကွင်း Snapshots များကို တပြိုင်နက်တည်း အမြန်ဆုံး ဖြတ်ယူခြင်း
+    const [{ audioBase64, duration }, frames] = await Promise.all([
+      extractAudioOptimized(file),
+      extractVideoKeyframes(file, 5)
+    ]);
 
-    pTitle.innerText = "Gemini Flash က ဗီဒီယိုအပြည့် Recap ဇာတ်လမ်း ရေးသားနေပါသည်...";
-    pPercent.innerText = "55%";
-    pBar.style.width = "55%";
+    pTitle.innerText = "Gemini Vision က မြင်ကွင်း + အသံကို ကြည့်ရှုပြီး Recap ရေးနေပါသည်...";
+    pPercent.innerText = "60%";
+    pBar.style.width = "60%";
 
     const scriptRes = await fetch("/api/generate-recap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ audioBase64, tone, videoDuration: Math.round(duration) }),
+      body: JSON.stringify({ audioBase64, frames, tone, videoDuration: Math.round(duration) }),
     });
 
     const scriptData = await scriptRes.json();
@@ -801,8 +862,8 @@ async function handleGenerateRecap() {
     scriptText.value = recapScript;
 
     pTitle.innerText = "ရွေးချယ်ထားသော အသံဖိုင် ဖန်တီးနေပါသည်...";
-    pPercent.innerText = "80%";
-    pBar.style.width = "80%";
+    pPercent.innerText = "85%";
+    pBar.style.width = "85%";
 
     const audioRes = await fetch("/api/generate-story", {
       method: "POST",
