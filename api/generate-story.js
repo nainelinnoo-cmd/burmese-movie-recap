@@ -5,68 +5,100 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-async function fetchGoogleTTS(text) {
-  const chunks = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
+// ၁။ Google Translate TTS (မ - သဘာဝကြည်လင် အမျိုးသမီးအသံ)
+async function fetchGoogleTTSSafe(text) {
+  const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
+  const chunks = [];
+
+  for (const s of sentences) {
+    const trimmed = s.trim();
+    if (!trimmed) continue;
+    if (trimmed.length > 50) {
+      const parts = trimmed.match(/.{1,50}/g) || [trimmed];
+      chunks.push(...parts);
+    } else {
+      chunks.push(trimmed);
+    }
+  }
+
   const audioBuffers = [];
   for (const chunk of chunks) {
     if (!chunk.trim()) continue;
     const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(chunk.trim())}&tl=my&client=tw-ob`;
-    const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Referer": "https://translate.google.com/"
+      }
+    });
     if (res.ok) {
       const buf = await res.arrayBuffer();
       audioBuffers.push(Buffer.from(buf));
     }
   }
-  if (audioBuffers.length > 0) return Buffer.concat(audioBuffers).toString("base64");
-  throw new Error("Google TTS Failed");
+
+  if (audioBuffers.length > 0) {
+    return Buffer.concat(audioBuffers).toString("base64");
+  }
+  throw new Error("Google TTS မရရှိပါ");
 }
 
-async function fetchAudioSafe(text, voice) {
-  if (voice && voice.startsWith("google-")) {
-    return await fetchGoogleTTS(text);
-  }
+// ၂။ Hugging Face Edge-TTS
+async function fetchEdgeTTS(text) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+  const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ data: [text] }),
+    signal: controller.signal
+  });
+  clearTimeout(timeoutId);
 
-    const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [text] }),
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
+  if (!postRes.ok) throw new Error("HF Space Connect Fail");
+  const { event_id } = await postRes.json();
 
-    if (postRes.ok) {
-      const { event_id } = await postRes.json();
-      const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
-      const streamText = await streamRes.text();
+  const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
+  const streamText = await streamRes.text();
 
-      for (const line of streamText.split("\n")) {
-        if (line.startsWith("data:")) {
-          const parsed = JSON.parse(line.replace("data:", "").trim());
-          if (Array.isArray(parsed) && parsed[0]) return parsed[0];
-        }
-      }
+  for (const line of streamText.split("\n")) {
+    if (line.startsWith("data:")) {
+      const parsed = JSON.parse(line.replace("data:", "").trim());
+      if (Array.isArray(parsed) && parsed[0]) return parsed[0];
     }
-  } catch (err) {
-    console.warn("HF Space error, fallback to Google TTS:", err.message);
   }
+  throw new Error("HF Space Audio Empty");
+}
 
-  return await fetchGoogleTTS(text);
+// ၃။ အသံရွေးချယ်မှု စနစ် (Google ကျား / မ ၂ မျိုးလုံးကို တိကျစွာ ခွဲခြားထုတ်လုပ်ပေးခြင်း)
+async function fetchAudioSafe(text, voice) {
+  if (voice === "google-my-male" || voice === "edge-thiha" || voice === "edge-thiha-deep" || voice === "edge-thiha-fast") {
+    // ယောက်ျားအသံ (Male Voice)
+    try {
+      return await fetchEdgeTTS(text);
+    } catch (eErr) {
+      console.warn("Edge-TTS Male မရသဖြင့် Google TTS သို့ ကူးပြောင်းပါသည်:", eErr.message);
+      return await fetchGoogleTTSSafe(text);
+    }
+  } else {
+    // မိန်းမအသံ (Female Voice - Google သဘာဝကြည်လင်)
+    try {
+      return await fetchGoogleTTSSafe(text);
+    } catch (gErr) {
+      console.warn("Google TTS မရသဖြင့် Edge-TTS သို့ ကူးပြောင်းပါသည်:", gErr.message);
+      return await fetchEdgeTTS(text);
+    }
+  }
 }
 
 async function runGeminiStoryJson(prompt) {
   const ACTIVE_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
     "gemini-3.8-flash",
     "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite"
+    "gemini-3.6-flash"
   ];
 
   let lastError = null;
@@ -82,11 +114,8 @@ async function runGeminiStoryJson(prompt) {
         if (res && res.text) return res.text.trim();
       } catch (e) {
         lastError = e.message;
-        console.warn(`Gemini (${m}) error:`, e.message);
       }
     }
-  } else {
-    lastError = "GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ";
   }
 
   // Fallback to Groq
@@ -122,17 +151,17 @@ module.exports = async (req, res) => {
     if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
     const selectedMins = parseInt(durationMinutes) || 1;
-    const wordsPerMinute = 135;
+    const wordsPerMinute = 125;
 
     if (format === "movie") {
       const totalWords = selectedMins * wordsPerMinute;
-      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Use short phrases. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
+      const prompt = `Write a complete standalone movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Break into short phrases. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
       const epWords = selectedMins * wordsPerMinute;
       const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}). 
-IMPORTANT: Each episode MUST contain around ${epWords} Burmese words. Total story spans across all 6 episodes. Use commas and short phrases.
+IMPORTANT: Each episode MUST contain around ${epWords} Burmese words so that each episode lasts approximately ${selectedMins} minute(s). Total story spans across all 6 episodes.
 Output strictly valid JSON: 
 {
   "series_title": "ခေါင်းစဉ်",
