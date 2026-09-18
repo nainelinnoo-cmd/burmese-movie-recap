@@ -4,29 +4,40 @@ const { Groq } = require("groq-sdk");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 
-// တောင်းဆိုထားသော Gemini မော်ဒယ်များ အစဉ်လိုက် စစ်ဆေးခေါ်ယူခြင်း
+// ၃ စက္ကန့်အတွင်း မရပါက နောက် Model သို့ ချက်ချင်းကျော်မည့် Timeout စနစ်
+function withTimeout(promise, ms = 3500) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), ms))
+  ]);
+}
+
 async function runAIWithModel(prompt, systemInstruction = "") {
+  // ဦးစားပေး စစ်ဆေးမည့် Gemini Models များ
   const GEMINI_MODELS = [
-    "gemini-3.6-flash",
-    "gemini-3.8-flash",
+    "gemini-2.5-flash",
     "gemini-2.0-flash",
     "gemini-1.5-flash",
-    "gemini-2.5-flash"
+    "gemini-3.6-flash",
+    "gemini-3.8-flash"
   ];
 
   if (process.env.GEMINI_API_KEY) {
     for (const m of GEMINI_MODELS) {
       try {
-        const response = await ai.models.generateContent({
-          model: m,
-          contents: prompt,
-          config: systemInstruction ? { systemInstruction } : {}
-        });
+        const response = await withTimeout(
+          ai.models.generateContent({
+            model: m,
+            contents: prompt,
+            config: systemInstruction ? { systemInstruction } : {}
+          }),
+          3500
+        );
         if (response && response.text) {
           return { text: response.text.trim(), modelUsed: m };
         }
       } catch (e) {
-        // အကယ်၍ ထို model version စမ်းသပ်ခွင့်မရှိပါက နောက် model သို့ ဆက်သွားမည်
+        // Model မရှိပါက သို့မဟုတ် ၃ စက္ကန့်ကျော်ပါက နောက် model သို့ ချက်ချင်းသွားမည်
       }
     }
   }
@@ -34,45 +45,52 @@ async function runAIWithModel(prompt, systemInstruction = "") {
   // Groq Fallback
   if (process.env.GROQ_API_KEY) {
     try {
-      const gRes = await groq.chat.completions.create({
-        model: "llama-3.1-8b-instant",
-        messages: [
-          ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-          { role: "user", content: prompt }
-        ]
-      });
+      const gRes = await withTimeout(
+        groq.chat.completions.create({
+          model: "llama-3.1-8b-instant",
+          messages: [
+            ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+            { role: "user", content: prompt }
+          ]
+        }),
+        4000
+      );
       const content = gRes.choices[0]?.message?.content?.trim();
       if (content) return { text: content, modelUsed: "Groq (Llama-3.1)" };
     } catch (err) {}
   }
 
   // Pollinations Fallback
-  const res = await fetch("https://text.pollinations.ai/", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      messages: [
-        ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
-        { role: "user", content: prompt }
-      ]
-    })
-  });
-  if (res.ok) {
-    const pText = await res.text();
-    return { text: pText.trim(), modelUsed: "Pollinations AI" };
-  }
+  try {
+    const res = await withTimeout(
+      fetch("https://text.pollinations.ai/", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            ...(systemInstruction ? [{ role: "system", content: systemInstruction }] : []),
+            { role: "user", content: prompt }
+          ]
+        })
+      }),
+      4000
+    );
+    if (res.ok) {
+      const pText = await res.text();
+      return { text: pText.trim(), modelUsed: "Pollinations AI" };
+    }
+  } catch (e) {}
 
-  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်၍ မရနိုင်ပါ။");
+  throw new Error("AI မော်ဒယ်များ ခေတ္တ မအားလပ်ပါ။ ထပ်မံ ကြိုးစားပေးပါ။");
 }
 
-// နံပါတ်စဉ်များ၊ English စာလုံးများနှင့် အမှိုက်များ အားလုံးကို အမြစ်ပြတ် ဖယ်ရှားသည့် စနစ်
+// နံပါတ်စဉ်များနှင့် အင်္ဂလိပ်စာလုံးများကို အပြီးတိုင် ဖယ်ရှားသည့် စနစ်
 function filterStrictBurmeseStory(rawText) {
   if (!rawText) return "";
   let text = rawText.replace(/<think>[\s\S]*?<\/think>/gi, "")
                     .replace(/```json/gi, "").replace(/```/g, "")
                     .replace(/\\n/g, "\n").replace(/\\"/g, '"');
 
-  // ပထမဆုံး မြန်မာအက္ခရာ တွေ့သည့်နေရာမှသာ ယူခြင်း
   const firstBurmeseIdx = text.search(/[\u1000-\u109F]/);
   if (firstBurmeseIdx !== -1) {
     text = text.substring(firstBurmeseIdx);
@@ -85,26 +103,20 @@ function filterStrictBurmeseStory(rawText) {
     let trimmed = line.trim();
     if (!trimmed) continue;
 
-    // အင်္ဂလိပ်စာလုံး ၂ လုံးထက် ပိုပါနေပါက အတွေးစာကြောင်းဖြစ်၍ ဖယ်ထုတ်မည်
     const engCount = (trimmed.match(/[a-zA-Z]/g) || []).length;
     if (engCount > 2) continue;
 
-    // စာကြောင်းအစတွင် ကပ်ပါလာသော နံပါတ်များ (ဥပမာ "2 ", "3. ", "၄-") ကို ဖြတ်ပစ်ခြင်း
+    // စာကြောင်းရှေ့ရှိ နံပါတ်စဉ်များ ဖြတ်ထုတ်ခြင်း
     trimmed = trimmed.replace(/^[\s\d၀-၉\.\)\-–—:]+/g, "").trim();
-
-    // အင်္ဂလိပ်နှင့် သင်္ကေတ အကြွင်းအကျန်များကို ဖယ်ရှားခြင်း
     trimmed = trimmed.replace(/[a-zA-Z0-9_\-–—#*@$%&+=<>{}\[\]\\\/^~`|]/g, "").trim();
 
-    // မြန်မာစာလုံး အနည်းဆုံး ၂ လုံး ပါမှသာ လက်ခံမည်
     const myanCount = (trimmed.match(/[\u1000-\u109F]/g) || []).length;
     if (myanCount >= 2) {
       cleanPhrases.push(trimmed);
     }
   }
 
-  // အပိုဒ်လိုက် ဖြစ်သွားစေရန် ပေါင်းစပ်ခြင်း
   let finalStory = cleanPhrases.join(" ").replace(/\s+/g, " ").trim();
-  // ပုဒ်မ (။) အဆုံးများတွင် စာကြောင်းခွဲပေးခြင်း
   finalStory = finalStory.replace(/။\s*/g, "။\n\n").trim();
 
   return finalStory || text.match(/[\u1000-\u104F\s၊။]+/g)?.join(" ").trim() || "";
@@ -116,25 +128,23 @@ module.exports = async (req, res) => {
   try {
     const { action, topic, genre, format, durationMinutes, scriptText, photoCount } = req.body;
 
-    // အဆင့် ၂ အတွက်: မြန်မာစာသားမှ English Photo Prompts သို့ ဘာသာပြန်ခြင်း
+    // အဆင့် ၂ အတွက်: Prompt Translation
     if (action === "translate_to_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
 
-      const prompt = `Read this Burmese story:
-"${scriptText.substring(0, 500)}"
+      const prompt = `Read this Burmese story: "${scriptText.substring(0, 500)}"
+Task: Extract exactly ${count} visual cinematic scenes and translate into descriptive English image prompts.
+Output format: ${count} English prompts, one per line. No numbers.`;
 
-Task: Extract exactly ${count} visual cinematic scenes and translate them into highly descriptive, photorealistic English image prompts for AI generation.
-Output format: Output ONLY the ${count} prompts, each on a separate line. Do NOT write numbers, bullet points, or intros.`;
-
-      const aiRes = await runAIWithModel(prompt, "You are a prompt engineer. Output only English image prompts, one per line. No numbers.");
+      const aiRes = await runAIWithModel(prompt, "You are an image prompt engineer. Output only English prompts, one per line.");
       const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
 
       const promptsList = [];
       for (let i = 0; i < count; i++) {
-        promptsList.push(rawLines[i] || `cinematic scene ${i + 1}, ultra realistic lighting, 8k masterpiece, dramatic atmosphere`);
+        promptsList.push(rawLines[i] || `cinematic scene ${i + 1}, ultra realistic lighting, 8k masterpiece`);
       }
 
       return res.status(200).json({
@@ -145,19 +155,18 @@ Output format: Output ONLY the ${count} prompts, each on a separate line. Do NOT
     }
 
     // အဆင့် ၁ အတွက်: ပုံပြင်စာသား ရေးထုတ်ခြင်း
-    if (!topic) return res.status(400).json({ error: "ဇာတ်လမ်းခေါင်းစဉ် မပါဝင်ပါ" });
+    if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
 
     const selectedMins = parseInt(durationMinutes) || 1;
     const words = selectedMins * 105;
 
-    const systemPrompt = "You are a professional Burmese author. Output strictly in continuous, natural Burmese story narration. Under NO circumstances should you output line numbers, sentence counts, list numbers (like 1, 2, 3), English words, or thoughts.";
+    const systemPrompt = "You are a professional Burmese storyteller. Write in natural Burmese script only. Absolutely NO numbers (1, 2, 3), NO English words, NO planning notes.";
 
     if (format === "series") {
       const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
-အခန်းဆက် ၆ ပိုင်းပါဝင်သော မြန်မာပုံပြင်ဇာတ်လမ်း ရေးပေးပါ။
-အပိုင်းတစ်ခုချင်းစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။
-စည်းမျဉ်း: နံပါတ်စဉ်များ၊ အင်္ဂလိပ်စာလုံးများ လုံးဝမပါရပါ။ သဘာဝကျသော စကားပြေဖြင့် ရေးပါ။
-အပိုင်းများကို အောက်ပါအတိုင်းသာ ခွဲခြားပေးပါ-
+အခန်းဆက် ၆ ပိုင်းပါဝင်သော မြန်မာပုံပြင် ရေးပေးပါ။
+အပိုင်းတစ်ခုချင်းစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် လုံးဝ မတပ်ပါနှင့်။
+အပိုင်းများကို အောက်ပါအတိုင်းသာ ခွဲပေးပါ-
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
 === အပိုင်း ၂ ===
@@ -210,7 +219,7 @@ Output format: Output ONLY the ${count} prompts, each on a separate line. Do NOT
     }
 
   } catch (err) {
-    console.error("Story Text Generation Error:", err);
+    console.error("Story API Error:", err);
     return res.status(500).json({ error: err.message || "ဇာတ်လမ်းစာသား ထုတ်ယူမှု မအောင်မြင်ပါ" });
   }
 };
