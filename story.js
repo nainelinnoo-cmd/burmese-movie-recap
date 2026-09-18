@@ -1,5 +1,6 @@
 var s_storyData = null;
 var s_currentEpNum = 1;
+var s_promptsArray = [];
 
 function initStoryView() {
   var container = document.getElementById("view-story") ||
@@ -29,7 +30,7 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း Box -->
+      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း Box -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း</span>
@@ -86,12 +87,31 @@ function initStoryView() {
 
         <div>
           <label id="s-label-current-text" style="font-size: 0.78rem; color: #38bdf8; font-weight: bold; margin-bottom: 4px; display: block;">📖 ထွက်ပေါ်လာသော မြန်မာဇာတ်လမ်းစာသား</label>
-          <textarea id="s-script-textarea" rows="6" placeholder="အင်္ဂလိပ်စာလုံး လုံးဝမပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem;"></textarea>
+          <textarea id="s-script-textarea" rows="6" placeholder="နံပါတ်စဉ်နှင့် အင်္ဂလိပ်စာလုံး လုံးဝမပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem; line-height: 1.6;"></textarea>
         </div>
 
-        <!-- နောက်တစ်ဆင့်အတွက် Translate to Prompt ခလုတ် -->
-        <button id="btn-next-translate-prompt" class="btn" style="display: none; background: #6366f1; padding: 11px; font-weight: bold;">
+        <!-- Translate to Prompt ခလုတ် (အဆင့် ၁ ပြီးပါက ပေါ်လာမည်) -->
+        <button onclick="handleTranslateToPrompts()" id="btn-next-translate-prompt" class="btn" style="display: none; background: #6366f1; padding: 12px; font-weight: bold;">
           <span>🌐 [Translate to Prompt] စာသားမှ English Prompts သို့ ပြောင်းမည်</span>
+        </button>
+      </div>
+
+      <!-- အဆင့် ၂: English Prompt သီးသန့် Box -->
+      <div class="card" id="s-prompts-card" style="display: none; flex-direction: column; gap: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="font-weight: bold; color: #a5b4fc;"><span class="step-badge" style="background: #6366f1;">အဆင့် ၂</span> 🎨 English Prompts (ဓာတ်ပုံဖော်ပြချက်များ)</span>
+          <select id="s-photo-count" style="height: 34px; font-size: 0.75rem; width: auto;">
+            <option value="2">၂ ပုံ</option>
+            <option value="4" selected>၄ ပုံ</option>
+            <option value="6">၆ ပုံ</option>
+            <option value="8">၈ ပုံ</option>
+          </select>
+        </div>
+
+        <textarea id="s-prompts-textarea" rows="5" placeholder="ဘာသာပြန်ထားသော English Prompts များ ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.82rem; font-family: monospace;"></textarea>
+
+        <button id="btn-prompt-to-photo" class="btn" style="background: #8b5cf6; padding: 11px; font-weight: bold;">
+          <span>🖼️ [Prompt to Photo] ဓာတ်ပုံများ စတင်ဆွဲမည်</span>
         </button>
       </div>
 
@@ -115,7 +135,7 @@ function updateGlobalProgress(title, percent, show = true) {
   if (bEl) bEl.style.width = percent + "%";
 }
 
-// ဇာတ်လမ်းစာသား ရေးထုတ်ခြင်း Function
+// ၁။ ပုံပြင်စာသား ရေးထုတ်ခြင်း
 async function handleGenerateStoryText() {
   var topic = document.getElementById("s-topic-input").value.trim();
   var format = document.getElementById("s-format-select").value;
@@ -133,7 +153,7 @@ async function handleGenerateStoryText() {
   updateGlobalProgress("Gemini Flash ဖြင့် စတင်ချိတ်ဆက်နေပါသည်...", 15, true);
 
   try {
-    updateGlobalProgress("[Gemini Flash] မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 50, true);
+    updateGlobalProgress("Gemini Flash ဖြင့် မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 50, true);
 
     var res = await fetch("/api/story/generate-text", {
       method: "POST",
@@ -161,7 +181,7 @@ async function handleGenerateStoryText() {
       textarea.value = data.story_text;
     }
 
-    updateGlobalProgress(`[${data.model_used}] မြန်မာဇာတ်လမ်းစာသား ရေးသားပြီးပါပြီ!`, 100, true);
+    updateGlobalProgress(`[${data.model_used}] နံပါတ်ကင်းစင်သော မြန်မာစာသား ရေးသားပြီးပါပြီ!`, 100, true);
     btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
     nextBtn.style.display = "block";
 
@@ -176,7 +196,7 @@ async function handleGenerateStoryText() {
   }
 }
 
-// Series အပိုင်းများ ကူးပြောင်းကြည့်ရှုခြင်း
+// ၂။ Series Episode ရွေးချယ်ခြင်း
 function selectStoryEpisode(epNum) {
   if (!s_storyData || !s_storyData.episodes) return;
   s_currentEpNum = epNum;
@@ -192,6 +212,51 @@ function selectStoryEpisode(epNum) {
   var ep = s_storyData.episodes[epNum - 1];
   document.getElementById("s-label-current-text").innerText = "📖 အပိုင်း " + epNum + ": " + ep.title;
   document.getElementById("s-script-textarea").value = ep.text;
+}
+
+// ၃။ မြန်မာစာမှ English Prompts သို့ Translate လုပ်ခြင်း
+async function handleTranslateToPrompts() {
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var count = document.getElementById("s-photo-count").value;
+  var nextBtn = document.getElementById("btn-next-translate-prompt");
+  var promptsCard = document.getElementById("s-prompts-card");
+  var promptsTextarea = document.getElementById("s-prompts-textarea");
+
+  if (!scriptText) return alert("စာသား အရင်ထုတ်ပေးပါ");
+
+  nextBtn.disabled = true;
+  updateGlobalProgress("English Photo Prompts ဘာသာပြန်ရန် ပြင်ဆင်နေပါသည်...", 30, true);
+
+  try {
+    updateGlobalProgress("Gemini ဖြင့် မြန်မာစာသားမှ English Prompts ဘာသာပြန်နေပါသည်...", 65, true);
+
+    var res = await fetch("/api/story/generate-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "translate_to_prompts",
+        scriptText: scriptText,
+        photoCount: count
+      })
+    });
+
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    s_promptsArray = data.prompts_array || [];
+    promptsTextarea.value = data.prompts_text;
+
+    updateGlobalProgress(`[${data.model_used}] English Prompts ဘာသာပြန်ပြီးပါပြီ!`, 100, true);
+    promptsCard.style.display = "flex";
+
+    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+
+  } catch (err) {
+    updateGlobalProgress("", 0, false);
+    alert("Error: " + err.message);
+  } finally {
+    nextBtn.disabled = false;
+  }
 }
 
 window.initStoryView = initStoryView;
