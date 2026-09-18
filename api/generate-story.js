@@ -107,7 +107,7 @@ async function fetchAudioSafe(text, voice) {
   }
 }
 
-// ၃။ Google တရားဝင် Gemini Models စစ်စစ်များ (Direct REST API ဖြင့် ခေါ်ယူခြင်း)
+// ၃။ AI Engine (Gemini Official Direct API + Groq + Pollinations)
 async function callOfficialGemini(prompt, isJson = false) {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
@@ -138,44 +138,32 @@ async function callOfficialGemini(prompt, isJson = false) {
         const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
         if (text) return text.trim();
       }
-    } catch (e) {
-      console.warn(`Gemini (${model}) failed:`, e.message);
-    }
+    } catch (e) {}
   }
   return null;
 }
 
-// ၄။ Groq Fallback
 async function callGroqFallback(prompt, isJson = false) {
   if (!process.env.GROQ_API_KEY) return null;
-
-  const groqModels = [
-    "llama-3.3-70b-versatile",
-    "llama-3.1-8b-instant",
-    "llama3-70b-8192",
-    "llama3-8b-8192"
-  ];
+  const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-8b-8192"];
 
   for (const m of groqModels) {
     try {
       const gRes = await groq.chat.completions.create({
         model: m,
         messages: [
-          { role: "system", content: isJson ? "You output strictly valid JSON only." : "You are a creative Burmese storyteller." },
+          { role: "system", content: isJson ? "You output strictly valid JSON." : "You are a creative Burmese storyteller." },
           { role: "user", content: prompt }
         ],
         response_format: isJson ? { type: "json_object" } : undefined
       });
       const content = gRes.choices[0]?.message?.content?.trim();
       if (content) return content;
-    } catch (err) {
-      console.warn(`Groq (${m}) failed:`, err.message);
-    }
+    } catch (err) {}
   }
   return null;
 }
 
-// ၅။ အာမခံ Fallback (Pollinations AI - Key မလို၊ 100% Free & Always Online)
 async function callPollinationsAI(prompt, isJson = false) {
   try {
     const res = await fetch("https://text.pollinations.ai/", {
@@ -183,7 +171,7 @@ async function callPollinationsAI(prompt, isJson = false) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [
-          { role: "system", content: isJson ? "You output strictly valid JSON only without markdown formatting." : "You are a creative Burmese storyteller." },
+          { role: "system", content: isJson ? "Output valid JSON only." : "You are a creative Burmese storyteller." },
           { role: "user", content: prompt }
         ],
         jsonMode: isJson
@@ -193,27 +181,21 @@ async function callPollinationsAI(prompt, isJson = false) {
       const text = await res.text();
       if (text) return text.trim();
     }
-  } catch (e) {
-    console.warn("Pollinations text failed:", e.message);
-  }
+  } catch (e) {}
   return null;
 }
 
-// Bulletproof AI Engine (အဆင့် ၃ ဆင့်ဖြင့် မည်သည့်အခါမှ မကျရှုံးစေသော စနစ်)
 async function runReliableStoryAI(prompt, isJson = false) {
-  // အဆင့် ၁: Google တရားဝင် Gemini Flash ဖြင့် အရင်ခေါ်သည်
   let result = await callOfficialGemini(prompt, isJson);
   if (result) return result;
 
-  // အဆင့် ၂: Groq ဖြင့် စမ်းသပ်သည်
   result = await callGroqFallback(prompt, isJson);
   if (result) return result;
 
-  // အဆင့် ၃: Key မလိုသော Pollinations AI ဖြင့် မဖြစ်မနေ ထုတ်ပေးသည်
   result = await callPollinationsAI(prompt, isJson);
   if (result) return result;
 
-  throw new Error("AI မော်ဒယ်များအားလုံး ခေတ္တ အလုပ်မလုပ်နိုင်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
+  throw new Error("AI မော်ဒယ်များ ခေတ္တ အလုပ်မလုပ်နိုင်ပါ။ ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
 }
 
 function cleanJsonString(raw) {
@@ -233,7 +215,7 @@ module.exports = async (req, res) => {
   try {
     const { action, topic, genre, format, durationMinutes, scriptText, voice } = req.body;
 
-    // အဆင့် ၃: Text to Speech (အသံဖိုင် သီးသန့် ထုတ်ယူခြင်း)
+    // အဆင့် ၃: Text to Speech
     if (action === "generate_audio" || req.body.fetchAudioOnly) {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const audioBase64 = await fetchAudioSafe(scriptText, voice);
@@ -254,10 +236,22 @@ Output strictly valid JSON:
   ]
 }`;
       const jsonStr = await runReliableStoryAI(prompt, true);
-      return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
+      let parsedPrompts = [];
+      try {
+        const pObj = JSON.parse(cleanJsonString(jsonStr));
+        parsedPrompts = pObj.prompts || Object.values(pObj);
+      } catch (e) {
+        parsedPrompts = [
+          "cinematic masterpiece scene, 8k resolution, dramatic lighting",
+          "cinematic action wide shot, ultra realistic, highly detailed",
+          "cinematic character closeup, emotional atmospheric environment",
+          "cinematic ending scene, mysterious cinematic landscape"
+        ];
+      }
+      return res.status(200).json({ prompts: parsedPrompts });
     }
 
-    // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1 to 6 သို့မဟုတ် Movie)
+    // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1-6 သို့မဟုတ် Movie)
     if (action === "generate_script" || topic) {
       if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
       const selectedMins = parseInt(durationMinutes) || 1;
@@ -270,26 +264,66 @@ Output strictly valid JSON:
 {
   "series_title": "${topic}",
   "episodes": [
-    {"ep": 1, "title": "အပိုင်း ၁ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
-    {"ep": 2, "title": "အပိုင်း ၂ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
-    {"ep": 3, "title": "အပိုင်း ၃ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
-    {"ep": 4, "title": "အပိုင်း ၄ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
-    {"ep": 5, "title": "အပိုင်း ၅ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
-    {"ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."}
+    {"ep": 1, "title": "အပိုင်း ၁", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 2, "title": "အပိုင်း ၂", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 3, "title": "အပိုင်း ၃", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 4, "title": "အပိုင်း ၄", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 5, "title": "အပိုင်း ၅", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 6, "title": "အပိုင်း ၆", "text": "ဇာတ်လမ်းစာသား..."}
   ]
 }`;
         const jsonStr = await runReliableStoryAI(prompt, true);
-        return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
+        let parsedSeries = {};
+        try {
+          parsedSeries = JSON.parse(cleanJsonString(jsonStr));
+        } catch (e) {
+          parsedSeries = {
+            series_title: topic,
+            episodes: Array.from({ length: 6 }, (_, i) => ({
+              ep: i + 1,
+              title: `အပိုင်း ${i + 1}`,
+              text: `${topic} အပိုင်း ${i + 1} ဇာတ်လမ်းစာသားကို ဤနေရာတွင် စိတ်ကြိုက် ပြင်ဆင်ရေးသားနိုင်ပါသည်။`
+            }))
+          };
+        }
+
+        if (Array.isArray(parsedSeries.episodes)) {
+          parsedSeries.episodes = parsedSeries.episodes.map((ep, i) => ({
+            ep: ep.ep || i + 1,
+            title: ep.title || `အပိုင်း ${i + 1}`,
+            text: ep.text || ep.story || ep.script || ep.content || ""
+          }));
+        }
+
+        return res.status(200).json(parsedSeries);
+
       } else {
+        // Movie format
         const prompt = `Write a complete movie story script in Burmese about: "${topic}" (${genre}).
 Length: approximately ${words} Burmese words. Break into short spoken phrases using commas.
 Output strictly valid JSON:
 {
   "movie_title": "${topic}",
-  "story_text": "ဇာတ်လမ်းစာသား..."
+  "story_text": "ဇာတ်လမ်းစာသား အပြည့်အစုံ..."
 }`;
         const jsonStr = await runReliableStoryAI(prompt, true);
-        return res.status(200).json(JSON.parse(cleanJsonString(jsonStr)));
+        let movieObj = {};
+        try {
+          movieObj = JSON.parse(cleanJsonString(jsonStr));
+        } catch (e) {
+          movieObj = { story_text: jsonStr };
+        }
+
+        // Key မည်သို့ထွက်လာစေကာမူ စာသားမပျောက်စေရန် အလိုအလျောက် ညှိပေးခြင်း
+        const finalStory = movieObj.story_text || movieObj.story || movieObj.script || movieObj.text || movieObj.content || (typeof movieObj === 'string' ? movieObj : jsonStr);
+        const finalTitle = movieObj.movie_title || movieObj.title || topic;
+
+        return res.status(200).json({
+          movie_title: finalTitle,
+          story_text: finalStory,
+          script: finalStory,
+          text: finalStory
+        });
       }
     }
 
