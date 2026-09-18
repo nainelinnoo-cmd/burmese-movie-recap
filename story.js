@@ -1,4 +1,3 @@
-// Variable Collision မဖြစ်စေရန် Safe Scope သုံးစွဲထားခြင်း
 var s_currentVoice = "edge-nilar";
 var s_seriesData = null;
 var s_currentEpNum = 1;
@@ -26,7 +25,6 @@ var s_titleFontSize = 24;
 var s_watermarkImg = null;
 
 function initStoryView() {
-  // Container Multi-Selector (မည်သည့် ID ဖြင့် ရေးထားသည်ဖြစ်စေ မိအောင် ဖမ်းယူသည်)
   var container = document.getElementById("view-story") ||
                   document.getElementById("story") ||
                   document.getElementById("story-view") ||
@@ -100,26 +98,26 @@ function initStoryView() {
 
         <input type="text" id="s-topic-input" placeholder="ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ပါ (ဥပမာ- ရွာထိပ်က စုန်းမကြီး)..." style="font-size: 0.85rem;" />
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎬 ဇာတ်လမ်းပုံစံ</label>
-            <select id="s-format-select" style="height: 40px; font-size: 0.8rem;">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end;">
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">🎬 ဇာတ်လမ်းပုံစံ</label>
+            <select id="s-format-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="movie" selected>🎬 Movie (တစ်ပိုင်း)</option>
               <option value="series">📺 Series (၆ ပိုင်း)</option>
             </select>
           </div>
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎭 အမျိုးအစား</label>
-            <select id="s-genre-select" style="height: 40px; font-size: 0.8rem;">
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">🎭 အမျိုးအစား</label>
+            <select id="s-genre-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="horror">👻 သရဲ</option>
               <option value="mystery">🔍 လျှို့ဝှက်</option>
               <option value="drama">💔 ဘဝ</option>
               <option value="motivation">💪 ခွန်အား</option>
             </select>
           </div>
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">⏱️ တစ်ပိုင်းကြာချိန်</label>
-            <select id="s-duration-select" style="height: 40px; font-size: 0.8rem;">
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 20px; line-height: 20px; margin-bottom: 4px; display: block;">⏱️ ကြာချိန်</label>
+            <select id="s-duration-select" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="1">၁ မိနစ်</option>
               <option value="2">၂ မိနစ်</option>
               <option value="3">၃ မိနစ်</option>
@@ -161,39 +159,40 @@ function initStoryView() {
         </div>
       </div>
 
-      <!-- အဆင့် ၂: Prompt to Photo (ပုံအရေအတွက် နှင့် Clip Time ရွေးချယ်မှုများ) -->
+      <!-- အဆင့် ၂: Prompt to Photo & Motion Settings (မျဉ်းတစ်ပြေးတည်း ညီညာသော Dropdowns) -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၂</span> 🎨 Prompt to Photo & Motion Settings</span>
         </div>
 
-        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px;">
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">🖼️ ဓာတ်ပုံ အရေအတွက်</label>
-            <select id="s-photo-count" style="height: 40px; font-size: 0.8rem;">
+        <!-- မျဉ်းညီစေရန် align-items: end နှင့် label height 28px ထည့်သွင်းထားသည် -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; align-items: end;">
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🖼️ ပုံအရေအတွက်</label>
+            <select id="s-photo-count" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
               <option value="2">၂ ပုံ</option>
               <option value="4" selected>၄ ပုံ</option>
               <option value="6">၆ ပုံ</option>
               <option value="8">၈ ပုံ</option>
             </select>
           </div>
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">⏱️ Photo Clip Time</label>
-            <select id="s-clip-duration" onchange="s_clipDurationMode = this.value" style="height: 40px; font-size: 0.8rem;">
-              <option value="auto" selected>🎵 Auto (အသံနှင့်ညီ)</option>
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">⏱️ Clip Time</label>
+            <select id="s-clip-duration" onchange="s_clipDurationMode = this.value" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+              <option value="auto" selected>🎵 Auto</option>
               <option value="3">၃ စက္ကန့်</option>
               <option value="5">၅ စက္ကန့်</option>
               <option value="7">၇ စက္ကန့်</option>
             </select>
           </div>
-          <div>
-            <label style="font-size: 0.72rem; margin-bottom: 2px;">🎬 Motion စတိုင်</label>
-            <select id="s-motion-style" onchange="s_motionStyle = this.value" style="height: 40px; font-size: 0.8rem;">
-              <option value="dynamic" selected>🔀 Dynamic (စုံလင်)</option>
-              <option value="zoom-in">🔍 Zoom In (အနီး)</option>
-              <option value="zoom-out">🔎 Zoom Out (အဝေး)</option>
-              <option value="pan-left">⬅️ Pan Left (ဘယ်)</option>
-              <option value="pan-right">➡️ Pan Right (ညာ)</option>
+          <div style="display: flex; flex-direction: column; justify-content: flex-end;">
+            <label style="font-size: 0.72rem; height: 28px; display: flex; align-items: flex-end; margin-bottom: 4px; line-height: 1.2;">🎬 Motion စတိုင်</label>
+            <select id="s-motion-style" onchange="s_motionStyle = this.value" style="height: 42px; width: 100%; box-sizing: border-box; font-size: 0.8rem;">
+              <option value="dynamic" selected>🔀 Dynamic</option>
+              <option value="zoom-in">🔍 Zoom In</option>
+              <option value="zoom-out">🔎 Zoom Out</option>
+              <option value="pan-left">⬅️ Pan Left</option>
+              <option value="pan-right">➡️ Pan Right</option>
             </select>
           </div>
         </div>
@@ -367,7 +366,6 @@ function initStoryView() {
   setupSSubtitleTouchResize();
 }
 
-// Global Progress Bar Controller
 function updateGlobalProgress(title, percent, show = true) {
   var box = document.getElementById("s-global-progress");
   var tEl = document.getElementById("s-progress-status-title");
@@ -1142,7 +1140,7 @@ async function exportMotionHardcodedVideo() {
   exportLoop();
 }
 
-// Router Hooks များ အားလုံးနှင့် ချိတ်ဆက်ခြင်း (Black Screen မဖြစ်စေရန်)
+// Router Hooks
 window.initStoryView = initStoryView;
 window.initStory = initStoryView;
 window.renderStory = initStoryView;
@@ -1155,7 +1153,6 @@ if (document.readyState !== "loading") {
   document.addEventListener("DOMContentLoaded", initStoryView);
 }
 
-// Auto-Mount Listener & Tab Switch Trigger
 document.addEventListener("click", function(e) {
   if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)") || e.target.closest("button:nth-child(3)"))) {
     setTimeout(initStoryView, 50);
