@@ -4,23 +4,25 @@ let recapSrtCues = [];
 let isSrtVisible = true;
 let isBlurActive = false;
 let isWatermarkActive = false;
+let isTitleActive = false;
 
 let srtFontSize = 18;
 let srtFontColor = "#ffffff";
-let srtBgColor = "rgba(0,0,0,0.75)";
+let srtBgStyle = "rgba(0,0,0,0.75)"; // background or 'stroke'
+let titleFontSize = 24;
 let watermarkImg = null;
 
 function initRecapsView() {
   const container = document.getElementById("view-recaps");
   container.innerHTML = `
     <div style="display: flex; flex-direction: column; gap: 14px;">
-      <!-- ၁။ မူရင်း Video ဖိုင်တင်ရန် -->
+      <!-- ၁။ Video တင်ရန် -->
       <div class="card">
         <label>🎬 မူရင်း ရုပ်ရှင် ဗီဒီယိုအပိုင်း တင်ပါ</label>
         <input type="file" id="recap-video-file" accept="video/*" />
       </div>
 
-      <!-- ၂။ အသံသရုပ်ဆောင်နှင့် စတိုင်ရွေးချယ်မှု -->
+      <!-- ၂။ အသံနှင့် စတိုင် ရွေးချယ်မှု -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
@@ -47,37 +49,42 @@ function initRecapsView() {
         </div>
       </div>
 
-      <!-- ၃။ အသံ ၃ မျိုး ချိန်ညှိမှု (Original, AI Voiceover, BGM) -->
-      <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
-        <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🎚️ အသံချိန်ညှိမှု စနစ် (Audio Mixer)</span>
-
-        <div>
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-            <span style="color: #94a3b8;">🎥 မူရင်း ဗီဒီယိုအသံ (Copyright အတွက် 0% ထားနိုင်သည်)</span>
-            <span id="vol-video-val" style="color: #38bdf8; font-weight: bold;">0%</span>
-          </div>
-          <input type="range" id="vol-video-slider" min="0" max="100" value="0" style="width: 100%; cursor: pointer;" />
+      <!-- ၃။ Audio Mixer (Dropdown Button ပုံစံဖြင့် ဖွင့်/ပိတ်နိုင်ခြင်း) -->
+      <div class="card" style="background: #131d31; padding: 12px;">
+        <div onclick="toggleAudioMixerDropdown()" style="display: flex; justify-content: space-between; align-items: center; cursor: pointer;">
+          <span style="font-size: 0.85rem; font-weight: bold; color: #38bdf8;">🎚️ အသံချိန်ညှိမှု စနစ် (Audio Mixer)</span>
+          <span id="audio-mixer-chevron" style="color: #facc15; font-size: 0.85rem; font-weight: bold;">▼ အသံချိန်ညှိမည်</span>
         </div>
 
-        <div>
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-            <span style="color: #94a3b8;">🎙️ AI နောက်ခံစကားပြော (Voiceover)</span>
-            <span id="vol-ai-val" style="color: #10b981; font-weight: bold;">100%</span>
+        <div id="audio-mixer-dropdown-content" style="display: none; flex-direction: column; gap: 10px; margin-top: 12px; border-top: 1px solid #334155; padding-top: 10px;">
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span style="color: #94a3b8;">🎥 မူရင်း ဗီဒီယိုအသံ (Copyright အတွက် 0% ထားနိုင်သည်)</span>
+              <span id="vol-video-val" style="color: #38bdf8; font-weight: bold;">0%</span>
+            </div>
+            <input type="range" id="vol-video-slider" min="0" max="100" value="0" style="width: 100%; cursor: pointer;" />
           </div>
-          <input type="range" id="vol-ai-slider" min="0" max="100" value="100" style="width: 100%; cursor: pointer;" />
-        </div>
 
-        <div>
-          <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-            <span style="color: #94a3b8;">🎵 နောက်ခံ BGM တီးလုံးအသံ</span>
-            <span id="vol-bgm-val" style="color: #facc15; font-weight: bold;">35%</span>
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span style="color: #94a3b8;">🎙️ AI နောက်ခံစကားပြော (Voiceover)</span>
+              <span id="vol-ai-val" style="color: #10b981; font-weight: bold;">100%</span>
+            </div>
+            <input type="range" id="vol-ai-slider" min="0" max="100" value="100" style="width: 100%; cursor: pointer;" />
           </div>
-          <input type="range" id="vol-bgm-slider" min="0" max="100" value="35" style="width: 100%; cursor: pointer;" />
-        </div>
 
-        <div style="margin-top: 4px;">
-          <label style="font-size: 0.75rem;">🎵 စိတ်ကြိုက် BGM / တီးလုံးဖိုင် တင်ရန် (ရွေးချယ်နိုင်သည်)</label>
-          <input type="file" id="recap-bgm-file" accept="audio/*" style="font-size: 0.75rem; padding: 6px;" />
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span style="color: #94a3b8;">🎵 နောက်ခံ BGM တီးလုံးအသံ</span>
+              <span id="vol-bgm-val" style="color: #facc15; font-weight: bold;">35%</span>
+            </div>
+            <input type="range" id="vol-bgm-slider" min="0" max="100" value="35" style="width: 100%; cursor: pointer;" />
+          </div>
+
+          <div>
+            <label style="font-size: 0.75rem;">🎵 စိတ်ကြိုက် BGM / တီးလုံးဖိုင် တင်ရန် (MP3/WAV)</label>
+            <input type="file" id="recap-bgm-file" accept="audio/*" style="font-size: 0.75rem; padding: 6px;" />
+          </div>
         </div>
       </div>
 
@@ -85,7 +92,7 @@ function initRecapsView() {
         <span>▶ Recap ဗီဒီယို ဖန်တီးမည်</span>
       </button>
 
-      <!-- Progress Bar -->
+      <!-- Progress UI -->
       <div id="recap-progress-container" style="display: none; background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 14px;">
         <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
           <span id="recap-step-title" style="color: #38bdf8; font-weight: bold;">စတင်နေပါသည်...</span>
@@ -98,67 +105,81 @@ function initRecapsView() {
 
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
 
-      <!-- Result Video Studio Section -->
+      <!-- Result Studio Section -->
       <div id="recap-result-box" style="display: none; flex-direction: column; gap: 14px;">
         <div class="card">
           <label>📝 ထုတ်လုပ်ထားသော Recap စာသား</label>
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Display Container with Draggable Overlays -->
+        <!-- Video Player Wrapper with Draggable Overlays -->
         <div id="video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; user-select: none;">
           <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
 
-          <!-- ၁။ Subtitle Overlay -->
+          <!-- ၁။ Title / စာသား Overlay -->
+          <div id="draggable-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; text-align: center; white-space: nowrap;">
+            ခေါင်းစဉ် စာသား
+          </div>
+
+          <!-- ၂။ Subtitle Overlay -->
           <div id="draggable-subtitle" style="position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 10px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
             စာတန်းထိုး ပြသမည့်နေရာ
           </div>
 
-          <!-- ၂။ Watermark Image Overlay -->
-          <div id="draggable-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 60px; height: 60px; cursor: move; z-index: 20; touch-action: none; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
+          <!-- ၃။ Watermark Overlay with Resize Handle -->
+          <div id="draggable-watermark" style="display: none; position: absolute; top: 15px; right: 15px; width: 70px; height: 70px; cursor: move; z-index: 20; border: 1px dashed rgba(255,255,255,0.4); border-radius: 4px;">
             <img id="watermark-preview-img" src="" style="width: 100%; height: 100%; object-fit: contain; pointer-events: none;" />
+            <!-- Resize Icon Button -->
+            <div id="wm-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #38bdf8; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
           </div>
 
-          <!-- ၃။ Blur Box Overlay -->
-          <div id="draggable-blur" style="display: none; position: absolute; top: 20px; left: 20px; width: 90px; height: 50px; background: rgba(255,255,255,0.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px dashed #facc15; border-radius: 6px; cursor: move; z-index: 18; touch-action: none; display: none; align-items: center; justify-content: center; font-size: 10px; color: #facc15; font-weight: bold;">
+          <!-- ၄။ Blur Box Overlay with Resize Handle -->
+          <div id="draggable-blur" style="display: none; position: absolute; top: 20px; left: 20px; width: 100px; height: 60px; background: rgba(255,255,255,0.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); border: 2px dashed #facc15; border-radius: 6px; cursor: move; z-index: 18; align-items: center; justify-content: center; font-size: 11px; color: #facc15; font-weight: bold;">
             BLUR BOX
+            <!-- Resize Icon Button -->
+            <div id="blur-resize-handle" style="position: absolute; right: -6px; bottom: -6px; width: 20px; height: 20px; background: #facc15; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold;">↘</div>
           </div>
         </div>
 
-        <!-- ၄။ Watermark & Blur Controls Card -->
-        <div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #131d31;">
+        <!-- ၄။ Add Video Title / Text Controls -->
+        <div class="card" style="background: #131d31; display: flex; flex-direction: column; gap: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">✏️ Video Title / စာသားထည့်ခြင်း</span>
+            <button onclick="toggleVideoTitle()" id="btn-title-toggle" class="btn" style="width: auto; padding: 4px 10px; font-size: 0.75rem; background: #475569;">Title: OFF</button>
+          </div>
+
+          <div id="title-controls-box" style="display: none; flex-direction: column; gap: 8px;">
+            <input type="text" id="custom-title-input" placeholder="ဗီဒီယိုပေါ်တွင် ပြသမည့် စာသား ရိုက်ပါ..." oninput="updateCustomTitleText(this.value)" style="font-size: 0.85rem;" />
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+                <span style="color: #94a3b8;">Title Size (0 - 100)</span>
+                <span id="title-size-val" style="color: #facc15; font-weight: bold;">24px</span>
+              </div>
+              <input type="range" id="title-size-slider" min="10" max="100" value="24" oninput="changeTitleFontSize(this.value)" style="width: 100%; cursor: pointer;" />
+            </div>
+          </div>
+        </div>
+
+        <!-- ၅။ Watermark & Blur Controls -->
+        <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
           <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">🎨 Watermark & Blur ကိရိယာများ</span>
 
-          <!-- Watermark Setup -->
           <div>
             <label style="font-size: 0.75rem;">🖼️ Watermark ပုံတင်ပါ (PNG / JPG)</label>
             <input type="file" id="watermark-file-input" accept="image/*" onchange="handleWatermarkUpload(event)" style="font-size: 0.75rem; padding: 6px;" />
-            <div id="watermark-size-controls" style="display: none; margin-top: 6px;">
-              <div style="display: flex; justify-content: space-between; font-size: 0.75rem;">
-                <span style="color: #94a3b8;">Watermark Size</span>
-                <span id="wm-size-val" style="color: #38bdf8; font-weight: bold;">60px</span>
-              </div>
-              <input type="range" id="wm-size-slider" min="30" max="180" value="60" oninput="changeWatermarkSize(this.value)" style="width: 100%;" />
-            </div>
+            <small style="color: #94a3b8; font-size: 0.7rem;">* ပုံပေါ်ရှိ (↘) အပြာရောင်ခလုတ်လေးကို ထိဆွဲပြီး Size စိတ်ကြိုက် ကြီး/သေး ပြုလုပ်နိုင်ပါသည်</small>
           </div>
 
-          <!-- Blur Box Setup -->
           <div style="border-top: 1px solid #334155; padding-top: 10px;">
             <div style="display: flex; justify-content: space-between; align-items: center;">
-              <label style="font-size: 0.75rem; margin-bottom: 0;">🌫️ Blur Box ဖွင့်/ပိတ် (Logo, စာသား ဖုံးရန်)</label>
+              <label style="font-size: 0.75rem; margin-bottom: 0;">🌫️ Blur Box (Logo, စာသား ဖုံးရန်)</label>
               <button onclick="toggleBlurBox()" id="btn-blur-toggle" class="btn" style="width: auto; padding: 4px 10px; font-size: 0.75rem; background: #475569;">Blur: OFF</button>
             </div>
-            <div id="blur-size-controls" style="display: none; margin-top: 6px;">
-              <div style="display: flex; justify-content: space-between; font-size: 0.75rem;">
-                <span style="color: #94a3b8;">Blur Box Size</span>
-                <span id="blur-size-val" style="color: #facc15; font-weight: bold;">90x50</span>
-              </div>
-              <input type="range" id="blur-size-slider" min="40" max="220" value="90" oninput="changeBlurBoxSize(this.value)" style="width: 100%;" />
-            </div>
+            <small style="color: #94a3b8; font-size: 0.7rem;">* Blur အကွက်ပေါ်ရှိ (↘) အဝါရောင်ခလုတ်လေးကို ထိဆွဲပြီး Size ပြင်ဆင်နိုင်ပါသည်</small>
           </div>
         </div>
 
-        <!-- ၅။ SRT Controller Card -->
+        <!-- ၆။ Subtitle (SRT) စနစ် - အရောင် ၇ မျိုး နှင့် နောက်ခံ/အနားကွပ် ၈ မျိုး -->
         <div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #131d31;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
@@ -168,24 +189,41 @@ function initRecapsView() {
             </div>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <div>
-              <label style="font-size: 0.75rem; margin-bottom: 4px;">စာသားအရောင်</label>
-              <div style="display: flex; gap: 10px;">
-                <div onclick="selectFontColor('#ffffff', this)" class="color-dot" style="background: #ffffff; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
-                <div onclick="selectFontColor('#facc15', this)" class="color-dot" style="background: #facc15; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-                <div onclick="selectFontColor('#38bdf8', this)" class="color-dot" style="background: #38bdf8; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-                <div onclick="selectFontColor('#4ade80', this)" class="color-dot" style="background: #4ade80; width: 24px; height: 24px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              </div>
+          <!-- စာသားအရောင် (၇ မျိုး) -->
+          <div>
+            <label style="font-size: 0.75rem; margin-bottom: 6px;">စာသားအရောင် (၇ မျိုး ပြည့်စုံစွာ ရွေးချယ်နိုင်သည်)</label>
+            <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
+              <div onclick="selectFontColor('#ffffff', this)" class="color-dot" style="background: #ffffff; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
+              <div onclick="selectFontColor('#facc15', this)" class="color-dot" style="background: #facc15; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#38bdf8', this)" class="color-dot" style="background: #38bdf8; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#4ade80', this)" class="color-dot" style="background: #4ade80; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#f87171', this)" class="color-dot" style="background: #f87171; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#c084fc', this)" class="color-dot" style="background: #c084fc; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
+              <div onclick="selectFontColor('#fb923c', this)" class="color-dot" style="background: #fb923c; width: 25px; height: 25px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
             </div>
+          </div>
 
-            <div>
-              <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-                <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size)</span>
-                <span id="srt-font-size-val" style="color: #38bdf8; font-weight: bold;">18px</span>
-              </div>
-              <input type="range" id="srt-size-slider" min="10" max="100" value="18" oninput="changeSrtFontSize(this.value)" style="width: 100%; cursor: pointer;" />
+          <!-- စာသားနောက်ခံအရောင် နှင့် စာသားအနားကွပ် (၈ မျိုး) -->
+          <div>
+            <label style="font-size: 0.75rem; margin-bottom: 6px;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;">
+              <button onclick="selectBgStyle('rgba(0,0,0,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #000; border: 1px solid #475569;">မည်းကြည်</button>
+              <button onclick="selectBgStyle('#000000')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #111; border: 1px solid #475569;">အနက်</button>
+              <button onclick="selectBgStyle('rgba(185,28,28,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #991b1b;">နီကြည်</button>
+              <button onclick="selectBgStyle('rgba(30,58,138,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #1e3a8a;">ပြာကြည်</button>
+              <button onclick="selectBgStyle('rgba(20,83,45,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #14532d;">စိမ်းကြည်</button>
+              <button onclick="selectBgStyle('rgba(180,83,9,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #b45309;">ဝါကြည်</button>
+              <button onclick="selectBgStyle('rgba(109,40,217,0.75)')" class="btn" style="padding: 6px 4px; font-size: 0.7rem; background: #6d28d9;">ခရမ်းကြည်</button>
+              <button onclick="selectBgStyle('stroke')" class="btn" style="padding: 6px 4px; font-size: 0.68rem; background: #0284c7; color: #fff; font-weight: bold;">အနားကွပ် (မပါ)</button>
             </div>
+          </div>
+
+          <div>
+            <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
+              <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size)</span>
+              <span id="srt-font-size-val" style="color: #38bdf8; font-weight: bold;">18px</span>
+            </div>
+            <input type="range" id="srt-size-slider" min="10" max="100" value="18" oninput="changeSrtFontSize(this.value)" style="width: 100%; cursor: pointer;" />
           </div>
 
           <div id="srt-edit-panel" style="display: none; flex-direction: column; gap: 8px;">
@@ -194,10 +232,10 @@ function initRecapsView() {
           </div>
         </div>
 
-        <!-- ၆။ Final Hardcoded Video Export & Download -->
+        <!-- ၇။ Final Hardcoded Video Download -->
         <div class="card" style="background: linear-gradient(145deg, #1e1b4b, #0f172a); border: 1px solid #6366f1;">
-          <div style="font-size: 0.9rem; font-weight: bold; color: #a5b4fc; margin-bottom: 8px;">🚀 Video အသေထည့်ပြီး Download လုပ်ခြင်း</div>
-          <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 12px;">စာတန်းထိုး၊ Watermark၊ Blur Box နှင့် တီးလုံးအသံ (Audio Mix) များကို Video ထဲတွင် အသေထည့်သွင်း၍ ဖုန်းထဲသို့ သိမ်းဆည်းပေးမည် ဖြစ်ပါသည်။</p>
+          <div style="font-size: 0.9rem; font-weight: bold; color: #a5b4fc; margin-bottom: 6px;">🚀 Video အသေထည့်ပြီး Download လုပ်ခြင်း</div>
+          <p style="font-size: 0.75rem; color: #94a3b8; margin-bottom: 12px;">စာတန်းထိုး၊ Title၊ Watermark၊ Blur Box နှင့် Audio Mixer များကို Video ထဲတွင် အသေထည့်သွင်း၍ ဖုန်းထဲသို့ Export ထုတ်ပေးမည် ဖြစ်ပါသည်။</p>
 
           <button id="btn-export-hardcoded" onclick="exportHardcodedVideo()" class="btn" style="background: linear-gradient(90deg, #6366f1, #10b981); font-weight: bold; font-size: 0.95rem; padding: 14px;">
             <span>📥 အားလုံးပါဝင်သော Video အပြီးသတ် Download ရယူမည်</span>
@@ -205,7 +243,7 @@ function initRecapsView() {
 
           <div id="export-progress-box" style="display: none; margin-top: 10px;">
             <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-              <span id="export-status-title" style="color: #38bdf8;">ဗီဒီယို ပေါင်းစပ်ထုတ်လုပ်နေပါသည်...</span>
+              <span id="export-status-title" style="color: #38bdf8;">Render ပြုလုပ်နေပါသည်...</span>
               <span id="export-percent-val" style="color: #facc15; font-weight: bold;">0%</span>
             </div>
             <div style="width: 100%; height: 6px; background: #0f172a; border-radius: 4px; overflow: hidden;">
@@ -219,11 +257,27 @@ function initRecapsView() {
 
   setupAudioMixerListeners();
   setupTouchDragOverlay("draggable-subtitle");
+  setupTouchDragOverlay("draggable-title");
   setupTouchDragOverlay("draggable-watermark");
   setupTouchDragOverlay("draggable-blur");
+
+  setupTouchResize("draggable-watermark", "wm-resize-handle");
+  setupTouchResize("draggable-blur", "blur-resize-handle");
 }
 
-// အသံ ၃ မျိုး ချိန်ညှိမှု စနစ်
+// Audio Mixer Dropdown Accordion Toggle
+function toggleAudioMixerDropdown() {
+  const content = document.getElementById("audio-mixer-dropdown-content");
+  const chevron = document.getElementById("audio-mixer-chevron");
+  if (content.style.display === "none") {
+    content.style.display = "flex";
+    chevron.innerText = "▲ ပိတ်မည်";
+  } else {
+    content.style.display = "none";
+    chevron.innerText = "▼ အသံချိန်ညှိမည်";
+  }
+}
+
 function setupAudioMixerListeners() {
   const vSlider = document.getElementById("vol-video-slider");
   const aSlider = document.getElementById("vol-ai-slider");
@@ -257,7 +311,39 @@ function setupAudioMixerListeners() {
   });
 }
 
-// Touch Drag စနစ် (Subtitle, Watermark, Blur Box အတွက် ဘုံသုံး Function)
+// Title / Text Box Controls
+function toggleVideoTitle() {
+  isTitleActive = !isTitleActive;
+  const titleEl = document.getElementById("draggable-title");
+  const controls = document.getElementById("title-controls-box");
+  const btn = document.getElementById("btn-title-toggle");
+
+  if (isTitleActive) {
+    titleEl.style.display = "block";
+    controls.style.display = "flex";
+    btn.innerText = "Title: ON";
+    btn.style.background = "#facc15";
+    btn.style.color = "#000";
+  } else {
+    titleEl.style.display = "none";
+    controls.style.display = "none";
+    btn.innerText = "Title: OFF";
+    btn.style.background = "#475569";
+    btn.style.color = "#fff";
+  }
+}
+
+function updateCustomTitleText(text) {
+  document.getElementById("draggable-title").innerText = text || "ခေါင်းစဉ် စာသား";
+}
+
+function changeTitleFontSize(val) {
+  titleFontSize = val;
+  document.getElementById("title-size-val").innerText = `${val}px`;
+  document.getElementById("draggable-title").style.fontSize = `${val}px`;
+}
+
+// Touch Drag Function
 function setupTouchDragOverlay(elementId) {
   const el = document.getElementById(elementId);
   const wrapper = document.getElementById("video-wrapper");
@@ -266,6 +352,7 @@ function setupTouchDragOverlay(elementId) {
   let startX, startY, origX, origY;
 
   function onStart(e) {
+    if (e.target.id.includes("resize-handle")) return; // Don't drag when resizing
     isDragging = true;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
@@ -303,7 +390,47 @@ function setupTouchDragOverlay(elementId) {
   window.addEventListener("mouseup", onEnd);
 }
 
-// Watermark Upload & Control
+// Touch Resize Handle (ဘေးဖက်၊ အောက်ဖက် အစုံကို Touch ဖြင့် Size စိတ်ကြိုက် ချိန်ညှိခြင်း)
+function setupTouchResize(targetId, handleId) {
+  const target = document.getElementById(targetId);
+  const handle = document.getElementById(handleId);
+
+  let isResizing = false;
+  let startX, startY, startW, startH;
+
+  function onResizeStart(e) {
+    e.stopPropagation();
+    isResizing = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    startX = clientX;
+    startY = clientY;
+    startW = target.clientWidth;
+    startH = target.clientHeight;
+  }
+
+  function onResizeMove(e) {
+    if (!isResizing) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+    const newW = Math.max(30, startW + (clientX - startX));
+    const newH = Math.max(20, startH + (clientY - startY));
+
+    target.style.width = `${newW}px`;
+    target.style.height = `${newH}px`;
+  }
+
+  function onResizeEnd() { isResizing = false; }
+
+  handle.addEventListener("touchstart", onResizeStart, { passive: false });
+  window.addEventListener("touchmove", onResizeMove, { passive: false });
+  window.addEventListener("touchend", onResizeEnd);
+  handle.addEventListener("mousedown", onResizeStart);
+  window.addEventListener("mousemove", onResizeMove);
+  window.addEventListener("mouseup", onResizeEnd);
+}
+
 function handleWatermarkUpload(event) {
   const file = event.target.files[0];
   if (!file) return;
@@ -315,55 +442,40 @@ function handleWatermarkUpload(event) {
     watermarkImg.onload = () => {
       document.getElementById("watermark-preview-img").src = e.target.result;
       document.getElementById("draggable-watermark").style.display = "block";
-      document.getElementById("watermark-size-controls").style.display = "block";
       isWatermarkActive = true;
     };
   };
   reader.readAsDataURL(file);
 }
 
-function changeWatermarkSize(val) {
-  const wm = document.getElementById("draggable-watermark");
-  wm.style.width = `${val}px`;
-  wm.style.height = `${val}px`;
-  document.getElementById("wm-size-val").innerText = `${val}px`;
-}
-
-// Blur Box Controls
 function toggleBlurBox() {
   isBlurActive = !isBlurActive;
   const blurBox = document.getElementById("draggable-blur");
   const btn = document.getElementById("btn-blur-toggle");
-  const controls = document.getElementById("blur-size-controls");
 
   if (isBlurActive) {
     blurBox.style.display = "flex";
-    controls.style.display = "block";
     btn.innerText = "Blur: ON";
     btn.style.background = "#facc15";
     btn.style.color = "#000";
   } else {
     blurBox.style.display = "none";
-    controls.style.display = "none";
     btn.innerText = "Blur: OFF";
     btn.style.background = "#475569";
     btn.style.color = "#fff";
   }
 }
 
-function changeBlurBoxSize(val) {
-  const blurBox = document.getElementById("draggable-blur");
-  const h = Math.round(val * 0.55);
-  blurBox.style.width = `${val}px`;
-  blurBox.style.height = `${h}px`;
-  document.getElementById("blur-size-val").innerText = `${val}x${h}`;
-}
-
-// Subtitle Styling
+// Subtitle Color & Style (၇ မျိုး နှင့် ၈ မျိုး)
 function selectFontColor(color, el) {
   srtFontColor = color;
   document.querySelectorAll(".color-dot").forEach(d => d.style.borderColor = "transparent");
   el.style.borderColor = "#38bdf8";
+  applySrtStyles();
+}
+
+function selectBgStyle(style) {
+  srtBgStyle = style;
   applySrtStyles();
 }
 
@@ -375,9 +487,17 @@ function changeSrtFontSize(size) {
 
 function applySrtStyles() {
   const sub = document.getElementById("draggable-subtitle");
-  if (sub) {
-    sub.style.color = srtFontColor;
-    sub.style.fontSize = `${srtFontSize}px`;
+  if (!sub) return;
+
+  sub.style.color = srtFontColor;
+  sub.style.fontSize = `${srtFontSize}px`;
+
+  if (srtBgStyle === "stroke") {
+    sub.style.background = "transparent";
+    sub.style.textShadow = "-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 6px rgba(0,0,0,0.9)";
+  } else {
+    sub.style.background = srtBgStyle;
+    sub.style.textShadow = "none";
   }
 }
 
@@ -402,7 +522,6 @@ function toggleSrtVisibility() {
   btn.style.background = isSrtVisible ? "#0284c7" : "#475569";
 }
 
-// မြန်မာစာတန်းများကို စာကြောင်းတိုအဖြစ် ခွဲထုတ်ခြင်း (Screen ပေါ်မရှုပ်စေရန်)
 function splitBurmeseIntoShortChunks(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
@@ -558,7 +677,7 @@ async function handleGenerateRecap() {
 
     const { audioBase64, duration } = await extractAudioOptimized(file);
 
-    pTitle.innerText = "Gemini Flash က Recap ရေးသားနေပါသည်...";
+    pTitle.innerText = "AI Recap Script နှင့် Subtitle ရေးသားနေပါသည်...";
     pPercent.innerText = "65%";
     pBar.style.width = "65%";
 
@@ -639,11 +758,12 @@ async function handleGenerateRecap() {
   }
 }
 
-// ၇။ Canvas ဖြင့် Video + Hardcoded Subtitle + Watermark + Blur Box + Audio Mixer အားလုံး ပေါင်းစပ်ပြီး Download ဆွဲခြင်း
+// ၈။ Hardcoded Video Export (Title, Watermark, Blur, Subtitle + Audio Mix)
 async function exportHardcodedVideo() {
   const video = document.getElementById("recap-video-player");
   const wrapper = document.getElementById("video-wrapper");
   const subEl = document.getElementById("draggable-subtitle");
+  const titleEl = document.getElementById("draggable-title");
   const wmEl = document.getElementById("draggable-watermark");
   const blurEl = document.getElementById("draggable-blur");
   const exportBtn = document.getElementById("btn-export-hardcoded");
@@ -659,17 +779,15 @@ async function exportHardcodedVideo() {
   exportBox.style.display = "block";
   exportTitle.innerText = "ဗီဒီယို အပြီးသတ် Render ပြုလုပ်နေပါသည်...";
 
-  // Canvas တည်ဆောက်ခြင်း
   const canvas = document.createElement("canvas");
   canvas.width = video.videoWidth || 1280;
   canvas.height = video.videoHeight || 720;
   const ctx = canvas.getContext("2d");
 
-  // Web Audio Context ဖြင့် Original + AI Voice + BGM ၃ မျိုးလုံးကို တစ်ပေါင်းတည်း Mix လုပ်ခြင်း
+  // Audio Mixer Setup
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const dest = audioCtx.createMediaStreamDestination();
 
-  // Volume Sliders တန်ဖိုးများ ရယူခြင်း
   const vGain = audioCtx.createGain();
   vGain.gain.value = document.getElementById("vol-video-slider").value / 100;
   const aGain = audioCtx.createGain();
@@ -699,7 +817,6 @@ async function exportHardcodedVideo() {
     }
   } catch (e) {}
 
-  // Canvas Stream နှင့် Audio Mix ပေါင်းစပ်ခြင်း
   const canvasStream = canvas.captureStream(30);
   const combinedStream = new MediaStream([
     ...canvasStream.getVideoTracks(),
@@ -722,7 +839,7 @@ async function exportHardcodedVideo() {
     const downloadUrl = URL.createObjectURL(finalBlob);
     const a = document.createElement("a");
     a.href = downloadUrl;
-    a.download = `Recap_Final_Video_${Date.now()}.webm`;
+    a.download = `Recap_Final_${Date.now()}.webm`;
     a.click();
 
     exportTitle.innerText = "ဗီဒီယို Download အောင်မြင်စွာ ရရှိပါပြီ!";
@@ -736,7 +853,6 @@ async function exportHardcodedVideo() {
     }, 2500);
   };
 
-  // Video ကို အစမှ ပြန်ဖွင့်ပြီး Canvas ထဲ Frame အလိုက် ဆွဲထည့်ခြင်း
   video.currentTime = 0;
   if (currentRecapAudio) currentRecapAudio.currentTime = 0;
   if (currentBgmAudio) currentBgmAudio.currentTime = 0;
@@ -752,10 +868,10 @@ async function exportHardcodedVideo() {
   function renderLoop() {
     if (video.paused || video.ended) return;
 
-    // ၁။ Base Video Frame
+    // Base Video
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    // ၂။ Blur Box ဆွဲခြင်း (Blur Effect Hardcoded)
+    // Hardcoded Blur Box
     if (isBlurActive && blurEl.style.display !== "none") {
       const bx = blurEl.offsetLeft * scaleX;
       const by = blurEl.offsetTop * scaleY;
@@ -771,7 +887,7 @@ async function exportHardcodedVideo() {
       ctx.restore();
     }
 
-    // ၃။ Watermark ပုံဆွဲခြင်း (Watermark Hardcoded)
+    // Hardcoded Watermark
     if (isWatermarkActive && watermarkImg && wmEl.style.display !== "none") {
       const wx = wmEl.offsetLeft * scaleX;
       const wy = wmEl.offsetTop * scaleY;
@@ -780,7 +896,24 @@ async function exportHardcodedVideo() {
       ctx.drawImage(watermarkImg, wx, wy, ww, wh);
     }
 
-    // ၄။ SRT စာတန်းထိုး အသေဆွဲခြင်း (Subtitle Hardcoded)
+    // Hardcoded Custom Title Text
+    if (isTitleActive && titleEl.style.display !== "none") {
+      const tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
+      const ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
+      const dynamicTitleSize = Math.round(titleFontSize * scaleY);
+
+      ctx.font = `bold ${dynamicTitleSize}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+
+      ctx.shadowColor = "#000000";
+      ctx.shadowBlur = 8;
+      ctx.fillStyle = "#facc15";
+      ctx.fillText(titleEl.innerText, tx, ty);
+      ctx.shadowBlur = 0;
+    }
+
+    // Hardcoded Subtitles (Stroke သို့မဟုတ် Background Box)
     if (isSrtVisible && subEl.style.display !== "none") {
       const currTime = video.currentTime;
       const currentCue = recapSrtCues.find(c => currTime >= c.start && currTime <= c.end);
@@ -794,23 +927,32 @@ async function exportHardcodedVideo() {
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        const textMetrics = ctx.measureText(currentCue.text);
-        const paddingX = 14 * scaleX;
-        const paddingY = 8 * scaleY;
-        const boxWidth = textMetrics.width + paddingX * 2;
-        const boxHeight = dynamicFontSize + paddingY * 2;
+        if (srtBgStyle === "stroke") {
+          // စာသားအနားကွပ် (No background box)
+          ctx.strokeStyle = "#000000";
+          ctx.lineWidth = 5 * scaleX;
+          ctx.strokeText(currentCue.text, sx, sy);
+          ctx.fillStyle = srtFontColor;
+          ctx.fillText(currentCue.text, sx, sy);
+        } else {
+          // နောက်ခံအရောင် Box ပါဝင်ခြင်း
+          const textMetrics = ctx.measureText(currentCue.text);
+          const paddingX = 14 * scaleX;
+          const paddingY = 8 * scaleY;
+          const boxWidth = textMetrics.width + paddingX * 2;
+          const boxHeight = dynamicFontSize + paddingY * 2;
 
-        ctx.fillStyle = srtBgColor;
-        ctx.beginPath();
-        ctx.roundRect(sx - boxWidth / 2, sy - boxHeight / 2, boxWidth, boxHeight, 8 * scaleX);
-        ctx.fill();
+          ctx.fillStyle = srtBgStyle;
+          ctx.beginPath();
+          ctx.roundRect(sx - boxWidth / 2, sy - boxHeight / 2, boxWidth, boxHeight, 8 * scaleX);
+          ctx.fill();
 
-        ctx.fillStyle = srtFontColor;
-        ctx.fillText(currentCue.text, sx, sy);
+          ctx.fillStyle = srtFontColor;
+          ctx.fillText(currentCue.text, sx, sy);
+        }
       }
     }
 
-    // Progress Bar % Update
     const pct = Math.min(99, Math.round((video.currentTime / video.duration) * 100));
     exportBar.style.width = `${pct}%`;
     exportPercent.innerText = `${pct}%`;
