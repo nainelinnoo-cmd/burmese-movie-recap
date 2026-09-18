@@ -21,30 +21,40 @@ async function fetchGoogleTTS(text) {
   throw new Error("Google TTS Failed");
 }
 
-async function fetchBurmeseVoice(text, voice) {
+async function fetchAudioSafe(text, voice) {
   if (voice && voice.startsWith("google-")) {
-    try { return await fetchGoogleTTS(text); } catch (e) {}
+    return await fetchGoogleTTS(text);
   }
 
-  const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: [text] }),
-  });
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 12000);
 
-  if (!postRes.ok) throw new Error("HF Space Connect Error");
-  const { event_id } = await postRes.json();
+    const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: [text] }),
+      signal: controller.signal
+    });
+    clearTimeout(timeout);
 
-  const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
-  const streamText = await streamRes.text();
-  const lines = streamText.split("\n");
-  for (const line of lines) {
-    if (line.startsWith("data:")) {
-      const parsed = JSON.parse(line.replace("data:", "").trim());
-      if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+    if (postRes.ok) {
+      const { event_id } = await postRes.json();
+      const streamRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict/${event_id}`);
+      const streamText = await streamRes.text();
+
+      for (const line of streamText.split("\n")) {
+        if (line.startsWith("data:")) {
+          const parsed = JSON.parse(line.replace("data:", "").trim());
+          if (Array.isArray(parsed) && parsed[0]) return parsed[0];
+        }
+      }
     }
+  } catch (err) {
+    console.warn("HF Space error, fallback to Google TTS:", err.message);
   }
-  throw new Error("အသံဒေတာ ရယူ၍မရပါ");
+
+  return await fetchGoogleTTS(text);
 }
 
 async function runGeminiStoryJson(prompt) {
@@ -105,7 +115,7 @@ module.exports = async (req, res) => {
     const { topic, genre, voice, format, durationMinutes, fetchAudioOnly, scriptText } = req.body;
 
     if (fetchAudioOnly && scriptText) {
-      const audioBase64 = await fetchBurmeseVoice(scriptText, voice);
+      const audioBase64 = await fetchAudioSafe(scriptText, voice);
       return res.status(200).json({ audioBase64 });
     }
 
@@ -116,14 +126,13 @@ module.exports = async (req, res) => {
 
     if (format === "movie") {
       const totalWords = selectedMins * wordsPerMinute;
-      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
+      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Use short phrases. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
       const epWords = selectedMins * wordsPerMinute;
       const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}). 
-IMPORTANT: Each episode MUST contain around ${epWords} Burmese words so that each episode lasts approximately ${selectedMins} minute(s) when read aloud.
-Total story spans across all 6 episodes.
+IMPORTANT: Each episode MUST contain around ${epWords} Burmese words. Total story spans across all 6 episodes. Use commas and short phrases.
 Output strictly valid JSON: 
 {
   "series_title": "ခေါင်းစဉ်",
