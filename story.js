@@ -10,18 +10,23 @@ let storySceneImages = [];
 let isStoryPlaying = false;
 let storyAnimationId = null;
 
-let isTitleActive = false;
-let isWatermarkActive = false;
-let isSrtVisible = true;
+// Variable Collision မဖြစ်စေရန် သီးခြား နာမည်ပြောင်းထားခြင်း
+let storyIsTitleActive = false;
+let storyIsWatermarkActive = false;
+let storyIsSrtVisible = true;
 
-let srtFontSize = 18;
-let srtFontColor = "#ffffff";
-let srtBgStyle = "rgba(0,0,0,0.75)";
-let titleFontSize = 24;
-let watermarkImg = null;
+let storySrtFontSize = 18;
+let storySrtFontColor = "#ffffff";
+let storySrtBgStyle = "rgba(0,0,0,0.75)";
+let storyTitleFontSize = 24;
+let storyWatermarkImg = null;
 
 function initStoryView() {
-  const container = document.getElementById("view-story");
+  const container = document.getElementById("view-story") ||
+                    document.getElementById("story-view") ||
+                    document.getElementById("view-stories") ||
+                    document.getElementById("story-container") ||
+                    document.getElementById("story");
   if (!container) return;
 
   container.innerHTML = `
@@ -346,15 +351,19 @@ function setupStoryAudioListeners() {
   const bSlider = document.getElementById("story-vol-bgm-slider");
   const audioEl = document.getElementById("story-audio-element");
 
-  aSlider.addEventListener("input", (e) => {
-    document.getElementById("story-vol-ai-val").innerText = `${e.target.value}%`;
-    if (audioEl) audioEl.volume = e.target.value / 100;
-  });
+  if (aSlider) {
+    aSlider.addEventListener("input", (e) => {
+      document.getElementById("story-vol-ai-val").innerText = `${e.target.value}%`;
+      if (audioEl) audioEl.volume = e.target.value / 100;
+    });
+  }
 
-  bSlider.addEventListener("input", (e) => {
-    document.getElementById("story-vol-bgm-val").innerText = `${e.target.value}%`;
-    if (currentStoryBgm) currentStoryBgm.volume = e.target.value / 100;
-  });
+  if (bSlider) {
+    bSlider.addEventListener("input", (e) => {
+      document.getElementById("story-vol-bgm-val").innerText = `${e.target.value}%`;
+      if (currentStoryBgm) currentStoryBgm.volume = e.target.value / 100;
+    });
+  }
 }
 
 function handleStoryBgmSelect(e) {
@@ -379,12 +388,12 @@ function removeStoryBgm() {
 
 // Title Controls
 function toggleStoryTitle() {
-  isTitleActive = !isTitleActive;
+  storyIsTitleActive = !storyIsTitleActive;
   const titleEl = document.getElementById("draggable-story-title");
   const controls = document.getElementById("story-title-controls-box");
   const btn = document.getElementById("btn-story-title-toggle");
 
-  if (isTitleActive) {
+  if (storyIsTitleActive) {
     titleEl.style.display = "block";
     controls.style.display = "flex";
     btn.innerText = "Title: ON";
@@ -404,7 +413,7 @@ function updateStoryTitleText(text) {
 }
 
 function changeStoryTitleFontSize(val) {
-  titleFontSize = val;
+  storyTitleFontSize = val;
   document.getElementById("story-title-size-val").innerText = `${val}px`;
   document.getElementById("draggable-story-title").style.fontSize = `${val}px`;
 }
@@ -416,36 +425,36 @@ function handleStoryWatermarkUpload(event) {
 
   const reader = new FileReader();
   reader.onload = (e) => {
-    watermarkImg = new Image();
-    watermarkImg.src = e.target.result;
-    watermarkImg.onload = () => {
+    storyWatermarkImg = new Image();
+    storyWatermarkImg.src = e.target.result;
+    storyWatermarkImg.onload = () => {
       document.getElementById("story-watermark-preview-img").src = e.target.result;
       document.getElementById("draggable-story-watermark").style.display = "block";
       document.getElementById("btn-story-remove-wm").style.display = "block";
-      isWatermarkActive = true;
+      storyIsWatermarkActive = true;
     };
   };
   reader.readAsDataURL(file);
 }
 
 function removeStoryWatermark() {
-  watermarkImg = null;
-  isWatermarkActive = false;
+  storyWatermarkImg = null;
+  storyIsWatermarkActive = false;
   document.getElementById("story-watermark-file-input").value = "";
   document.getElementById("draggable-story-watermark").style.display = "none";
   document.getElementById("btn-story-remove-wm").style.display = "none";
 }
 
-// Subtitle Styling (၇ မျိုး & ၈ မျိုး ⭕)
+// Subtitle Styling
 function selectStoryFontColor(color, el) {
-  srtFontColor = color;
+  storySrtFontColor = color;
   document.querySelectorAll(".story-font-dot").forEach(d => d.style.borderColor = "transparent");
   el.style.borderColor = "#38bdf8";
   applyStorySrtStyles();
 }
 
 function selectStoryBgStyle(style, el) {
-  srtBgStyle = style;
+  storySrtBgStyle = style;
   document.querySelectorAll(".story-bg-dot").forEach(d => {
     d.style.borderColor = (d.getAttribute("title") && d.getAttribute("title").includes("အနားကွပ်")) ? "#ffffff" : "transparent";
   });
@@ -454,7 +463,7 @@ function selectStoryBgStyle(style, el) {
 }
 
 function changeStorySrtFontSize(size) {
-  srtFontSize = size;
+  storySrtFontSize = size;
   document.getElementById("story-srt-font-size-val").innerText = `${size}px`;
   applyStorySrtStyles();
 }
@@ -463,25 +472,25 @@ function applyStorySrtStyles() {
   const sub = document.getElementById("draggable-story-subtitle");
   if (!sub) return;
 
-  sub.style.color = srtFontColor;
-  sub.style.fontSize = `${srtFontSize}px`;
+  sub.style.color = storySrtFontColor;
+  sub.style.fontSize = `${storySrtFontSize}px`;
 
-  if (srtBgStyle === "stroke") {
+  if (storySrtBgStyle === "stroke") {
     sub.style.background = "transparent";
     sub.style.textShadow = "-2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 2px 2px 0 #000, 0 3px 6px rgba(0,0,0,0.9)";
   } else {
-    sub.style.background = srtBgStyle;
+    sub.style.background = storySrtBgStyle;
     sub.style.textShadow = "none";
   }
 }
 
 function toggleStorySrtVisibility() {
-  isSrtVisible = !isSrtVisible;
+  storyIsSrtVisible = !storyIsSrtVisible;
   const sub = document.getElementById("draggable-story-subtitle");
   const btn = document.getElementById("btn-story-srt-toggle");
-  sub.style.display = isSrtVisible ? "block" : "none";
-  btn.innerText = isSrtVisible ? "SRT: ON" : "SRT: OFF";
-  btn.style.background = isSrtVisible ? "#0284c7" : "#475569";
+  sub.style.display = storyIsSrtVisible ? "block" : "none";
+  btn.innerText = storyIsSrtVisible ? "SRT: ON" : "SRT: OFF";
+  btn.style.background = storyIsSrtVisible ? "#0284c7" : "#475569";
 }
 
 function toggleStorySrtEditBox() {
@@ -492,7 +501,7 @@ function toggleStorySrtEditBox() {
 function saveStorySrtChanges() {
   const newSrtText = document.getElementById("story-srt-edit-textarea").value;
   window.currentStorySrtRaw = newSrtText;
-  currentStorySrtCues = parseStorySrt(newSrtText);
+  currentStorySrtCues = storyParseSrt(newSrtText);
   alert("SRT ကို အောင်မြင်စွာ သိမ်းဆည်းပြီးပါပြီ!");
 }
 
@@ -509,6 +518,7 @@ function downloadCurrentStorySrt() {
 function setupStoryTouchDrag(elementId) {
   const el = document.getElementById(elementId);
   const wrapper = document.getElementById("story-video-wrapper");
+  if (!el || !wrapper) return;
 
   let isDragging = false;
   let startX, startY, origX, origY;
@@ -556,6 +566,7 @@ function setupStorySubtitleTouchResize() {
   const handle = document.getElementById("story-sub-resize-handle");
   const slider = document.getElementById("story-srt-size-slider");
   const sizeVal = document.getElementById("story-srt-font-size-val");
+  if (!handle) return;
 
   let isResizing = false;
   let startX, startSize;
@@ -565,7 +576,7 @@ function setupStorySubtitleTouchResize() {
     isResizing = true;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     startX = clientX;
-    startSize = srtFontSize;
+    startSize = storySrtFontSize;
   }
 
   function onMove(e) {
@@ -573,7 +584,7 @@ function setupStorySubtitleTouchResize() {
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const deltaX = clientX - startX;
     let newSize = Math.max(10, Math.min(100, Math.round(startSize + deltaX * 0.35)));
-    srtFontSize = newSize;
+    storySrtFontSize = newSize;
     if (slider) slider.value = newSize;
     if (sizeVal) sizeVal.innerText = `${newSize}px`;
     applyStorySrtStyles();
@@ -592,6 +603,7 @@ function setupStorySubtitleTouchResize() {
 function setupStoryTouchResize(targetId, handleId) {
   const target = document.getElementById(targetId);
   const handle = document.getElementById(handleId);
+  if (!target || !handle) return;
 
   let isResizing = false;
   let startX, startY, startW, startH;
@@ -629,8 +641,7 @@ function setupStoryTouchResize(targetId, handleId) {
   window.addEventListener("mouseup", onResizeEnd);
 }
 
-// Subtitle Chunking & Accurate SRT Logic
-function splitBurmeseIntoShortChunks(text) {
+function storySplitBurmeseIntoShortChunks(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
   for (const s of sentences) {
@@ -654,8 +665,8 @@ function splitBurmeseIntoShortChunks(text) {
   return chunks.filter(c => c.length > 0);
 }
 
-function generateAccurateSrt(scriptText, totalDuration) {
-  const chunks = splitBurmeseIntoShortChunks(scriptText);
+function storyGenerateAccurateSrt(scriptText, totalDuration) {
+  const chunks = storySplitBurmeseIntoShortChunks(scriptText);
   const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
 
   let srt = "";
@@ -681,7 +692,7 @@ function generateAccurateSrt(scriptText, totalDuration) {
   return srt;
 }
 
-function parseStorySrt(srtText) {
+function storyParseSrt(srtText) {
   if (!srtText) return [];
   const blocks = srtText.trim().split(/\n\s*\n/);
   return blocks.map(block => {
@@ -708,7 +719,7 @@ async function fetchSceneImagesFromPrompts(prompts = []) {
   storySceneImages = [];
   if (!prompts || prompts.length === 0) return;
 
-  const loadPromises = prompts.map((p, idx) => {
+  const loadPromises = prompts.map((p) => {
     return new Promise((resolve) => {
       const img = new Image();
       img.crossOrigin = "anonymous";
@@ -716,7 +727,6 @@ async function fetchSceneImagesFromPrompts(prompts = []) {
       img.src = `https://image.pollinations.ai/prompt/${encodeURIComponent(p)}?width=1280&height=720&nologo=true&seed=${seed}`;
       img.onload = () => resolve(img);
       img.onerror = () => {
-        // Fallback canvas gradient if network fails
         const fallbackCanvas = document.createElement("canvas");
         fallbackCanvas.width = 1280;
         fallbackCanvas.height = 720;
@@ -754,9 +764,8 @@ function renderMotionCanvasFrame(time, duration) {
   const img = storySceneImages[currentIdx];
   if (!img) return;
 
-  // 2.5D Ken-Burns Slow Zoom & Pan
-  const scale = 1.0 + segmentProgress * 0.12; // 1.0 to 1.12 zoom
-  const panX = (segmentProgress - 0.5) * 40; // slight horizontal pan
+  const scale = 1.0 + segmentProgress * 0.12;
+  const panX = (segmentProgress - 0.5) * 40;
   const panY = (segmentProgress - 0.5) * 20;
 
   ctx.save();
@@ -779,8 +788,7 @@ function startMotionRenderLoop() {
 
     renderMotionCanvasFrame(curr, dur);
 
-    // Live Subtitle Update
-    if (isSrtVisible) {
+    if (storyIsSrtVisible) {
       const cue = currentStorySrtCues.find(c => curr >= c.start && curr <= c.end);
       if (textSpan) textSpan.innerText = cue ? cue.text : "";
     }
@@ -920,8 +928,10 @@ async function selectEpisode(epNum) {
 
   for (let i = 1; i <= 6; i++) {
     const btn = document.getElementById(`btn-ep-${i}`);
-    btn.style.background = (i === epNum) ? "#38bdf8" : "#1e293b";
-    btn.style.color = (i === epNum) ? "#000" : "#fff";
+    if (btn) {
+      btn.style.background = (i === epNum) ? "#38bdf8" : "#1e293b";
+      btn.style.color = (i === epNum) ? "#000" : "#fff";
+    }
   }
 
   const epData = storySeriesData.episodes[epNum - 1];
@@ -968,10 +978,10 @@ async function prepareAudioForScript(scriptText) {
 
   audioEl.onloadedmetadata = () => {
     const dur = audioEl.duration || 60;
-    const srt = generateAccurateSrt(scriptText, dur);
+    const srt = storyGenerateAccurateSrt(scriptText, dur);
     window.currentStorySrtRaw = srt;
     document.getElementById("story-srt-edit-textarea").value = srt;
-    currentStorySrtCues = parseStorySrt(srt);
+    currentStorySrtCues = storyParseSrt(srt);
     renderMotionCanvasFrame(0, dur);
   };
 
@@ -1008,7 +1018,6 @@ async function exportStoryHardcodedVideo() {
   exportCanvas.height = 720;
   const ctx = exportCanvas.getContext("2d");
 
-  // Audio Mixer Setup
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const dest = audioCtx.createMediaStreamDestination();
 
@@ -1083,7 +1092,7 @@ async function exportStoryHardcodedVideo() {
     const curr = audioEl.currentTime;
     const dur = audioEl.duration || 60;
 
-    // ၁။ 2.5D Pan/Zoom Motion Background
+    // ၁။ 2.5D Motion Background
     if (storySceneImages.length > 0) {
       const segmentDuration = dur / storySceneImages.length;
       const currentIdx = Math.min(storySceneImages.length - 1, Math.floor(curr / segmentDuration));
@@ -1108,19 +1117,19 @@ async function exportStoryHardcodedVideo() {
     }
 
     // ၂။ Hardcoded Watermark
-    if (isWatermarkActive && watermarkImg && wmEl.style.display !== "none") {
+    if (storyIsWatermarkActive && storyWatermarkImg && wmEl.style.display !== "none") {
       const wx = wmEl.offsetLeft * scaleX;
       const wy = wmEl.offsetTop * scaleY;
       const ww = wmEl.clientWidth * scaleX;
       const wh = wmEl.clientHeight * scaleY;
-      ctx.drawImage(watermarkImg, wx, wy, ww, wh);
+      ctx.drawImage(storyWatermarkImg, wx, wy, ww, wh);
     }
 
-    // ၃။ Hardcoded Custom Title Text
-    if (isTitleActive && titleEl.style.display !== "none") {
+    // ၃။ Hardcoded Title
+    if (storyIsTitleActive && titleEl.style.display !== "none") {
       const tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
       const ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
-      const dynamicTitleSize = Math.round(titleFontSize * scaleY);
+      const dynamicTitleSize = Math.round(storyTitleFontSize * scaleY);
 
       ctx.font = `bold ${dynamicTitleSize}px sans-serif`;
       ctx.textAlign = "center";
@@ -1133,24 +1142,24 @@ async function exportStoryHardcodedVideo() {
       ctx.shadowBlur = 0;
     }
 
-    // ၄။ Hardcoded Subtitle (SRT)
-    if (isSrtVisible && subEl.style.display !== "none") {
+    // ၄။ Hardcoded Subtitles
+    if (storyIsSrtVisible && subEl.style.display !== "none") {
       const currentCue = currentStorySrtCues.find(c => curr >= c.start && curr <= c.end);
 
       if (currentCue && currentCue.text) {
         const sx = (subEl.offsetLeft + subEl.clientWidth / 2) * scaleX;
         const sy = (subEl.offsetTop + subEl.clientHeight / 2) * scaleY;
-        const dynamicFontSize = Math.round(srtFontSize * scaleY);
+        const dynamicFontSize = Math.round(storySrtFontSize * scaleY);
 
         ctx.font = `bold ${dynamicFontSize}px sans-serif`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
 
-        if (srtBgStyle === "stroke") {
+        if (storySrtBgStyle === "stroke") {
           ctx.strokeStyle = "#000000";
           ctx.lineWidth = 5 * scaleX;
           ctx.strokeText(currentCue.text, sx, sy);
-          ctx.fillStyle = srtFontColor;
+          ctx.fillStyle = storySrtFontColor;
           ctx.fillText(currentCue.text, sx, sy);
         } else {
           const textMetrics = ctx.measureText(currentCue.text);
@@ -1159,12 +1168,12 @@ async function exportStoryHardcodedVideo() {
           const boxWidth = textMetrics.width + paddingX * 2;
           const boxHeight = dynamicFontSize + paddingY * 2;
 
-          ctx.fillStyle = srtBgStyle;
+          ctx.fillStyle = storySrtBgStyle;
           ctx.beginPath();
           ctx.roundRect(sx - boxWidth / 2, sy - boxHeight / 2, boxWidth, boxHeight, 8 * scaleX);
           ctx.fill();
 
-          ctx.fillStyle = srtFontColor;
+          ctx.fillStyle = storySrtFontColor;
           ctx.fillText(currentCue.text, sx, sy);
         }
       }
@@ -1185,8 +1194,20 @@ async function exportStoryHardcodedVideo() {
   renderExportLoop();
 }
 
+// Router သုံးနိုင်ရန် Global Function အဖြစ် ထုတ်ပေးခြင်း
+window.initStoryView = initStoryView;
+window.initStory = initStoryView;
+window.renderStory = initStoryView;
+
 if (document.readyState !== "loading") {
   initStoryView();
 } else {
   document.addEventListener("DOMContentLoaded", initStoryView);
 }
+
+// Tab နှိပ်သည့်အခါတိုင်း အလိုအလျောက် ပေါ်လာစေမည့် Fallback Trigger
+document.addEventListener("click", (e) => {
+  if (e.target && e.target.closest && (e.target.closest("[onclick*='story']") || e.target.closest(".nav-item:nth-child(3)"))) {
+    setTimeout(initStoryView, 60);
+  }
+});
