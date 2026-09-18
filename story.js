@@ -91,7 +91,8 @@ function initStoryView() {
           <span id="audio-btn-icon">🔊</span> <span id="audio-btn-text">ဤ Episode အသံကို ဖွင့်မည်</span>
         </button>
 
-        <div id="story-live-subtitle" style="display: none; background: rgba(0,0,0,0.8); color: #facc15; padding: 10px; border-radius: 8px; text-align: center; font-size: 16px; font-weight: bold;"></div>
+        <!-- အသံနှင့် တပြေးညီ ပေါ်မည့် စာတန်းတို Overlay -->
+        <div id="story-live-subtitle" style="display: none; background: rgba(0,0,0,0.85); color: #facc15; padding: 10px; border-radius: 8px; text-align: center; font-size: 16px; font-weight: bold; border: 1px solid #334155; min-height: 48px; line-height: 1.4;"></div>
 
         <audio id="story-audio-player" controls style="width: 100%; display: none; margin-top: 6px;"></audio>
 
@@ -147,7 +148,6 @@ function setupAudioStateListeners() {
     audioBtn.style.background = "#10b981";
     audioIcon.innerText = "🔊";
     audioText.innerText = "အသံဖိုင် ပြန်ဖွင့်မည်";
-    liveSub.style.display = "none";
   });
 }
 
@@ -156,15 +156,42 @@ function handleFormatChange() {
   document.getElementById("story-btn-text").innerText = format === "series" ? "📺 ဇာတ်လမ်းတွဲ (Ep 1 to 6) ဖန်တီးမည်" : "🎬 Movie (တစ်ပိုင်းတည်း) ဖန်တီးမည်";
 }
 
-function generateSrtFromTextAndAudio(text, totalDuration) {
+function splitBurmeseIntoShortChunks(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
-  const cleaned = sentences.map(s => s.trim()).filter(Boolean);
-  const timePerCue = totalDuration / (cleaned.length || 1);
+  const chunks = [];
+
+  for (const s of sentences) {
+    const trimmed = s.trim();
+    if (trimmed.length <= 32) {
+      if (trimmed) chunks.push(trimmed);
+    } else {
+      const subParts = trimmed.split(/([၊\s]+)/);
+      let current = "";
+      for (const part of subParts) {
+        if ((current + part).length > 30 && current.length > 0) {
+          chunks.push(current.trim());
+          current = part;
+        } else {
+          current += part;
+        }
+      }
+      if (current.trim()) chunks.push(current.trim());
+    }
+  }
+  return chunks.filter(c => c.length > 0);
+}
+
+function generateAccurateSrt(text, totalDuration) {
+  const chunks = splitBurmeseIntoShortChunks(text);
+  const totalLength = chunks.reduce((acc, c) => acc + c.length, 0);
 
   let srt = "";
-  cleaned.forEach((sentence, idx) => {
-    const startSec = idx * timePerCue;
-    const endSec = Math.min((idx + 1) * timePerCue, totalDuration);
+  let currentStart = 0;
+
+  chunks.forEach((chunk, index) => {
+    const chunkRatio = chunk.length / totalLength;
+    const chunkDuration = totalDuration * chunkRatio;
+    const currentEnd = Math.min(currentStart + chunkDuration, totalDuration);
 
     const fmt = (s) => {
       const hrs = Math.floor(s / 3600).toString().padStart(2, "0");
@@ -174,8 +201,10 @@ function generateSrtFromTextAndAudio(text, totalDuration) {
       return `${hrs}:${mins}:${secs},${ms}`;
     };
 
-    srt += `${idx + 1}\n${fmt(startSec)} --> ${fmt(endSec)}\n${sentence}\n\n`;
+    srt += `${index + 1}\n${fmt(currentStart)} --> ${fmt(currentEnd)}\n${chunk}\n\n`;
+    currentStart = currentEnd;
   });
+
   return srt;
 }
 
@@ -268,7 +297,14 @@ async function handleGenerateStory() {
       body: JSON.stringify({ topic, format, genre, voice, durationMinutes: duration })
     });
 
-    const data = await response.json();
+    const responseText = await response.text();
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (e) {
+      throw new Error(`ဆာဗာမှ မှားယွင်းသော ဒေတာ ပေးပို့ထားပါသည်: ${responseText.substring(0, 100)}`);
+    }
+
     if (!response.ok) throw new Error(data.error || "ဇာတ်လမ်း ထုတ်လုပ်မှု မအောင်မြင်ပါ");
 
     clearInterval(storyProgressInterval);
@@ -372,7 +408,7 @@ async function playCurrentStoryAudio() {
 
     audioPlayer.onloadedmetadata = () => {
       const realDuration = audioPlayer.duration || 60;
-      const srt = generateSrtFromTextAndAudio(textToRead, realDuration);
+      const srt = generateAccurateSrt(textToRead, realDuration);
       if (format === "series") {
         storySeriesData.episodes[currentEpNumber - 1].srtText = srt;
         storySeriesData.episodes[currentEpNumber - 1].audioBase64 = data.audioBase64;
