@@ -5,7 +5,7 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
-// ၁။ Google Translate TTS (အမျိုးသမီးအသံ စံ)
+// ၁။ Google Translate TTS
 async function fetchGoogleTTSSafe(text) {
   const sentences = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const chunks = [];
@@ -38,12 +38,12 @@ async function fetchGoogleTTSSafe(text) {
   return Buffer.concat(audioBuffers).toString("base64");
 }
 
-// ၂။ Hugging Face Edge-TTS (သီဟ နှင့် နီလာ အသံ ၂ မျိုးလုံး ရယူခြင်း)
+// ၂။ Hugging Face Edge-TTS
 async function fetchEdgeTTS(text, voice = "edge-thiha") {
   const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
 
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000); // 5s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
   let postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
     method: "POST",
@@ -52,7 +52,6 @@ async function fetchEdgeTTS(text, voice = "edge-thiha") {
     signal: controller.signal
   }).catch(() => null);
 
-  // 1 argument သာ လက်ခံသော Space ဖြစ်ပါက [text] ဖြင့် ပြန်လည်ချိတ်ခြင်း
   if (!postRes || !postRes.ok) {
     postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
       method: "POST",
@@ -78,9 +77,8 @@ async function fetchEdgeTTS(text, voice = "edge-thiha") {
   throw new Error("HF Space Audio Empty");
 }
 
-// ၃။ အသံရွေးချယ်မှု တိကျသော Logic စနစ်
+// ၃။ အသံရွေးချယ်မှု စနစ်
 async function fetchAudioSafe(text, voice) {
-  // Google အမျိုးသမီးအသံ သီးသန့် ရွေးချယ်ထားခြင်း
   if (voice === "google-my-female") {
     try {
       return await fetchGoogleTTSSafe(text);
@@ -89,27 +87,22 @@ async function fetchAudioSafe(text, voice) {
     }
   }
 
-  // Edge-TTS နီလာ (မ) ရွေးချယ်ထားခြင်း
   if (voice && voice.includes("nilar")) {
     try {
       return await fetchEdgeTTS(text, "edge-nilar");
     } catch (eErr) {
-      console.warn("Edge-TTS Nilar မရသဖြင့် Google သို့ ကူးပြောင်းပါသည်:", eErr.message);
       return await fetchGoogleTTSSafe(text);
     }
   }
 
-  // Edge-TTS သီဟ (ကျား) သို့မဟုတ် Google (ကျား) ရွေးချယ်ထားခြင်း
   if (voice && (voice.includes("thiha") || voice === "google-my-male")) {
     try {
       return await fetchEdgeTTS(text, "edge-thiha");
     } catch (eErr) {
-      console.warn("Edge-TTS Thiha မရသဖြင့် Google သို့ ကူးပြောင်းပါသည်:", eErr.message);
       return await fetchGoogleTTSSafe(text);
     }
   }
 
-  // Default Fallback
   try {
     return await fetchEdgeTTS(text, voice);
   } catch (e) {
@@ -179,23 +172,67 @@ module.exports = async (req, res) => {
 
     if (format === "movie") {
       const totalWords = selectedMins * wordsPerMinute;
-      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}). Length: approximately ${totalWords} words. Output JSON: {"movie_title": "ခေါင်းစဉ်", "story_text": "ဇာတ်လမ်းစာသား"}`;
+      const prompt = `Write a complete movie script in Burmese for topic: "${topic}" (${genre}).
+Length: approximately ${totalWords} Burmese words. Break into short spoken phrases.
+Also generate 4 vivid, cinematic image prompts in English describing key visual scenes of this movie (e.g. 'cinematic 8k, dark mysterious forest, ancient pagoda under moonlight, ultra realistic').
+Output strictly valid JSON:
+{
+  "movie_title": "ခေါင်းစဉ်",
+  "story_text": "ဇာတ်လမ်းစာသား",
+  "image_prompts": [
+    "cinematic scene 1 description...",
+    "cinematic scene 2 description...",
+    "cinematic scene 3 description...",
+    "cinematic scene 4 description..."
+  ]
+}`;
       const jsonStr = await runGeminiStoryJson(prompt);
       return res.status(200).json(JSON.parse(jsonStr));
     } else {
       const epWords = selectedMins * wordsPerMinute;
-      const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}). 
-IMPORTANT: Each episode MUST contain around ${epWords} Burmese words so that each episode lasts approximately ${selectedMins} minute(s). Total story spans across all 6 episodes.
-Output strictly valid JSON: 
+      const prompt = `Write a 6-episode continuous series script in Burmese for topic: "${topic}" (${genre}).
+IMPORTANT: Each episode MUST contain around ${epWords} Burmese words.
+For EACH episode, provide 3 cinematic English image prompts for AI visual scene generation.
+Output strictly valid JSON:
 {
   "series_title": "ခေါင်းစဉ်",
   "episodes": [
-    {"ep": 1, "title": "အပိုင်း ၁ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
-    {"ep": 2, "title": "အပိုင်း ၂ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
-    {"ep": 3, "title": "အပိုင်း ၃ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
-    {"ep": 4, "title": "အပိုင်း ၄ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
-    {"ep": 5, "title": "အပိုင်း ၅ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"},
-    {"ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား"}
+    {
+      "ep": 1,
+      "title": "အပိုင်း ၁ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    },
+    {
+      "ep": 2,
+      "title": "အပိုင်း ၂ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    },
+    {
+      "ep": 3,
+      "title": "အပိုင်း ၃ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    },
+    {
+      "ep": 4,
+      "title": "အပိုင်း ၄ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    },
+    {
+      "ep": 5,
+      "title": "အပိုင်း ၅ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    },
+    {
+      "ep": 6,
+      "title": "အပိုင်း ၆ ခေါင်းစဉ်",
+      "text": "ဇာတ်လမ်းစာသား",
+      "image_prompts": ["cinematic scene 1...", "cinematic scene 2...", "cinematic scene 3..."]
+    }
   ]
 }`;
       const jsonStr = await runGeminiStoryJson(prompt);
