@@ -1,6 +1,7 @@
 var s_storyData = null;
 var s_currentEpNum = 1;
 var s_promptsArray = [];
+var s_loadTimer = null;
 
 function initStoryView() {
   var container = document.getElementById("view-story") ||
@@ -15,20 +16,27 @@ function initStoryView() {
       .step-badge { background: #0284c7; color: #fff; font-size: 0.75rem; padding: 2px 8px; border-radius: 6px; font-weight: bold; }
       .ep-btn { padding: 8px 0; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-weight: bold; cursor: pointer; font-size: 0.8rem; }
       .ep-btn.active { background: #38bdf8; color: #000; border-color: #38bdf8; }
+
+      /* စာသား Box ထဲရှိ Loading Animation စတိုင် */
+      @keyframes pulseGlow {
+        0%, 100% { opacity: 0.6; transform: scale(0.98); }
+        50% { opacity: 1; transform: scale(1.02); }
+      }
+      @keyframes spinRing {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      .loading-spinner {
+        width: 38px;
+        height: 38px;
+        border: 3px solid rgba(56, 189, 248, 0.2);
+        border-top: 3px solid #38bdf8;
+        border-radius: 50%;
+        animation: spinRing 0.8s linear infinite;
+      }
     </style>
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
-
-      <!-- Model Tracker & Loading Bar -->
-      <div id="s-global-progress" style="display: none; background: #1e293b; border: 1px solid #0284c7; border-radius: 12px; padding: 12px;">
-        <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 6px;">
-          <span id="s-progress-status-title" style="color: #38bdf8; font-weight: bold;">စတင်နေပါသည်...</span>
-          <span id="s-progress-status-pct" style="color: #facc15; font-weight: bold;">0%</span>
-        </div>
-        <div style="width: 100%; height: 8px; background: #0f172a; border-radius: 6px; overflow: hidden;">
-          <div id="s-progress-status-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.25s ease;"></div>
-        </div>
-      </div>
 
       <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း Box -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
@@ -85,12 +93,27 @@ function initStoryView() {
           </div>
         </div>
 
-        <div>
+        <!-- စာသား Box နှင့် ယင်းအတွင်း ထည့်သွင်းထားသော Loading Animation -->
+        <div style="position: relative; min-height: 150px;">
           <label id="s-label-current-text" style="font-size: 0.78rem; color: #38bdf8; font-weight: bold; margin-bottom: 4px; display: block;">📖 ထွက်ပေါ်လာသော မြန်မာဇာတ်လမ်းစာသား</label>
-          <textarea id="s-script-textarea" rows="6" placeholder="နံပါတ်စဉ်နှင့် အင်္ဂလိပ်စာလုံး လုံးဝမပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem; line-height: 1.6;"></textarea>
+          
+          <textarea id="s-script-textarea" rows="6" placeholder="နံပါတ်စဉ်နှင့် အင်္ဂလိပ်စာလုံး လုံးဝမပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem; line-height: 1.6; width: 100%; box-sizing: border-box;"></textarea>
+
+          <!-- အနီရောင်ဝိုင်းပြထားသော စာသား Box အတွင်း Loading Animation UI -->
+          <div id="s-box-loader" style="display: none; position: absolute; top: 24px; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.95); border: 1.5px solid #0284c7; border-radius: 8px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; z-index: 10; padding: 12px; box-sizing: border-box;">
+            <div class="loading-spinner"></div>
+            <div style="text-align: center;">
+              <span id="s-box-loading-title" style="color: #38bdf8; font-size: 0.82rem; font-weight: bold; display: block;">Gemini Flash ဖြင့် ရေးသားနေပါသည်...</span>
+              <span id="s-box-loading-pct" style="color: #facc15; font-size: 1rem; font-weight: bold;">0%</span>
+            </div>
+            <!-- အောက်ခံ Progress Bar အသေး -->
+            <div style="width: 75%; height: 6px; background: #080e1a; border-radius: 4px; overflow: hidden;">
+              <div id="s-box-loading-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s ease;"></div>
+            </div>
+          </div>
         </div>
 
-        <!-- Translate to Prompt ခလုတ် (အဆင့် ၁ ပြီးပါက ပေါ်လာမည်) -->
+        <!-- Translate to Prompt ခလုတ် -->
         <button onclick="handleTranslateToPrompts()" id="btn-next-translate-prompt" class="btn" style="display: none; background: #6366f1; padding: 12px; font-weight: bold;">
           <span>🌐 [Translate to Prompt] စာသားမှ English Prompts သို့ ပြောင်းမည်</span>
         </button>
@@ -119,23 +142,26 @@ function initStoryView() {
   `;
 }
 
-function updateGlobalProgress(title, percent, show = true) {
-  var box = document.getElementById("s-global-progress");
-  var tEl = document.getElementById("s-progress-status-title");
-  var pEl = document.getElementById("s-progress-status-pct");
-  var bEl = document.getElementById("s-progress-status-bar");
+// စာသား Box ထဲတွင် Animation နှင့် % အမှန် ပြသပေးသည့် Controller
+function updateBoxLoader(title, percent, show = true) {
+  var loader = document.getElementById("s-box-loader");
+  var tEl = document.getElementById("s-box-loading-title");
+  var pEl = document.getElementById("s-box-loading-pct");
+  var bEl = document.getElementById("s-box-loading-bar");
 
   if (!show) {
-    if (box) box.style.display = "none";
+    if (loader) loader.style.display = "none";
+    clearInterval(s_loadTimer);
     return;
   }
-  if (box) box.style.display = "block";
+
+  if (loader) loader.style.display = "flex";
   if (tEl) tEl.innerText = title;
   if (pEl) pEl.innerText = percent + "%";
   if (bEl) bEl.style.width = percent + "%";
 }
 
-// ၁။ ပုံပြင်စာသား ရေးထုတ်ခြင်း
+// ၁။ ပုံပြင်စာသား ရေးထုတ်ခြင်း (စာသား Box ထဲတွင် ကာတွန်းနှင့် % အမှန် တက်စေမည့် စနစ်)
 async function handleGenerateStoryText() {
   var topic = document.getElementById("s-topic-input").value.trim();
   var format = document.getElementById("s-format-select").value;
@@ -150,11 +176,23 @@ async function handleGenerateStoryText() {
   if (!topic) return alert("ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
 
   btn.disabled = true;
-  updateGlobalProgress("Gemini Flash ဖြင့် စတင်ချိတ်ဆက်နေပါသည်...", 15, true);
+  nextBtn.style.display = "none";
+
+  // စာသား Box ထဲတွင် Loading Animation စတင်ပြသခြင်း
+  var currentPct = 10;
+  updateBoxLoader("Gemini Flash ဖြင့် ချိတ်ဆက်နေပါသည်...", currentPct, true);
+
+  // မရပ်တန့်ဘဲ ၉၀% အထိ သဘာဝကျစွာ တဖြည်းဖြည်း တက်စေခြင်း
+  clearInterval(s_loadTimer);
+  s_loadTimer = setInterval(function() {
+    if (currentPct < 90) {
+      currentPct += Math.floor(Math.random() * 8) + 4;
+      if (currentPct > 90) currentPct = 90;
+      updateBoxLoader("မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", currentPct, true);
+    }
+  }, 400);
 
   try {
-    updateGlobalProgress("Gemini Flash ဖြင့် မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", 50, true);
-
     var res = await fetch("/api/story/generate-text", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -169,29 +207,33 @@ async function handleGenerateStoryText() {
     var data = await res.json();
     if (!res.ok) throw new Error(data.error || "ဇာတ်လမ်း ရေးသားမှု မအောင်မြင်ပါ");
 
-    s_storyData = data;
+    clearInterval(s_loadTimer);
+    updateBoxLoader(`[${data.model_used}] အောင်မြင်စွာ ပြီးစီးပါပြီ!`, 100, true);
 
-    if (data.format === "series" && data.episodes) {
-      epContainer.style.display = "flex";
-      s_currentEpNum = 1;
-      selectStoryEpisode(1);
-    } else {
-      epContainer.style.display = "none";
-      document.getElementById("s-label-current-text").innerText = "🎬 " + data.title + " (ရုပ်ရှင်ဇာတ်လမ်းစာသား)";
-      textarea.value = data.story_text;
-    }
+    setTimeout(function() {
+      updateBoxLoader("", 0, false);
+      s_storyData = data;
 
-    updateGlobalProgress(`[${data.model_used}] နံပါတ်ကင်းစင်သော မြန်မာစာသား ရေးသားပြီးပါပြီ!`, 100, true);
-    btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
-    nextBtn.style.display = "block";
+      if (data.format === "series" && data.episodes) {
+        epContainer.style.display = "flex";
+        s_currentEpNum = 1;
+        selectStoryEpisode(1);
+      } else {
+        epContainer.style.display = "none";
+        document.getElementById("s-label-current-text").innerText = "🎬 " + data.title + " (ရုပ်ရှင်ဇာတ်လမ်းစာသား)";
+        textarea.value = data.story_text;
+      }
 
-    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+      btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
+      nextBtn.style.display = "block";
+      btn.disabled = false;
+    }, 600);
 
   } catch (err) {
-    updateGlobalProgress("", 0, false);
+    clearInterval(s_loadTimer);
+    updateBoxLoader("", 0, false);
     alert("Error: " + err.message);
     btn.innerText = "✨ ဇာတ်လမ်းစာသား ရေးထုတ်မည်";
-  } finally {
     btn.disabled = false;
   }
 }
@@ -225,11 +267,9 @@ async function handleTranslateToPrompts() {
   if (!scriptText) return alert("စာသား အရင်ထုတ်ပေးပါ");
 
   nextBtn.disabled = true;
-  updateGlobalProgress("English Photo Prompts ဘာသာပြန်ရန် ပြင်ဆင်နေပါသည်...", 30, true);
+  updateBoxLoader("English Prompts သို့ ဘာသာပြန်နေပါသည်...", 40, true);
 
   try {
-    updateGlobalProgress("Gemini ဖြင့် မြန်မာစာသားမှ English Prompts ဘာသာပြန်နေပါသည်...", 65, true);
-
     var res = await fetch("/api/story/generate-text", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -243,18 +283,19 @@ async function handleTranslateToPrompts() {
     var data = await res.json();
     if (!res.ok) throw new Error(data.error);
 
-    s_promptsArray = data.prompts_array || [];
-    promptsTextarea.value = data.prompts_text;
+    updateBoxLoader(`[${data.model_used}] Prompts ပြီးစီးပါပြီ!`, 100, true);
 
-    updateGlobalProgress(`[${data.model_used}] English Prompts ဘာသာပြန်ပြီးပါပြီ!`, 100, true);
-    promptsCard.style.display = "flex";
-
-    setTimeout(function() { updateGlobalProgress("", 0, false); }, 1200);
+    setTimeout(function() {
+      updateBoxLoader("", 0, false);
+      s_promptsArray = data.prompts_array || [];
+      promptsTextarea.value = data.prompts_text;
+      promptsCard.style.display = "flex";
+      nextBtn.disabled = false;
+    }, 500);
 
   } catch (err) {
-    updateGlobalProgress("", 0, false);
+    updateBoxLoader("", 0, false);
     alert("Error: " + err.message);
-  } finally {
     nextBtn.disabled = false;
   }
 }
