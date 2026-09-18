@@ -1,8 +1,3 @@
-const { GoogleGenAI } = require("@google/genai");
-const { Groq } = require("groq-sdk");
-
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY || "" });
-const groq = new Groq({ apiKey: process.env.GROQ_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
 async function fetchGoogleTTS(text) {
@@ -32,7 +27,7 @@ async function fetchGoogleTTS(text) {
 async function fetchEdgeTTS(text, voice = "edge-thiha") {
   const voiceName = (voice && voice.includes("nilar")) ? "my-MM-NilarNeural" : "my-MM-ThihaNeural";
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  const timeoutId = setTimeout(() => controller.abort(), 6000);
 
   let postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
     method: "POST",
@@ -76,67 +71,100 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, "edge-thiha"); } catch (e) { return await fetchGoogleTTS(text); }
 }
 
-async function runAIWithModel(prompt) {
-  const apiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+async function callDirectGemini(apiKey, model, prompt) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
 
-  if (apiKey) {
-    const REAL_GEMINI_MODELS = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"];
-    for (const m of REAL_GEMINI_MODELS) {
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.7, maxOutputTokens: 1200 }
+    }),
+    signal: controller.signal
+  });
+  clearTimeout(timeout);
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || `Gemini Status ${res.status}`);
+  }
+
+  const data = await res.json();
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+  if (!text) throw new Error("Empty response from Gemini");
+  return text.trim();
+}
+
+async function callDirectGroq(apiKey, prompt) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 6000);
+
+  const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [{ role: "user", content: prompt }],
+      temperature: 0.7,
+      max_tokens: 1200
+    }),
+    signal: controller.signal
+  });
+  clearTimeout(timeout);
+
+  if (!res.ok) throw new Error("Groq API Error");
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content?.trim();
+}
+
+async function runFastAI(prompt) {
+  const geminiKey = process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY;
+  const groqKey = process.env.GROQ_API_KEY;
+
+  if (geminiKey) {
+    const models = ["gemini-2.0-flash", "gemini-1.5-flash"];
+    for (const m of models) {
       try {
-        const response = await ai.models.generateContent({
-          model: m,
-          contents: prompt
-        });
-        if (response && response.text && response.text.trim()) {
-          return { text: response.text.trim(), modelUsed: m };
-        }
-      } catch (e) {
-        try {
-          const restUrl = `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${apiKey}`;
-          const gRes = await fetch(restUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: prompt }] }]
-            })
-          });
-          if (gRes.ok) {
-            const data = await gRes.json();
-            const txt = data.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (txt && txt.trim()) return { text: txt.trim(), modelUsed: m };
-          }
-        } catch (restErr) {}
-      }
+        const result = await callDirectGemini(geminiKey, m, prompt);
+        if (result) return { text: result, modelUsed: m };
+      } catch (e) {}
     }
   }
 
-  if (process.env.GROQ_API_KEY) {
+  if (groqKey) {
     try {
-      const gRes = await groq.chat.completions.create({
-        model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: prompt }]
-      });
-      const content = gRes.choices[0]?.message?.content?.trim();
-      if (content) return { text: content, modelUsed: "Groq (Llama-3.3)" };
-    } catch (err) {}
+      const gResult = await callDirectGroq(groqKey, prompt);
+      if (gResult) return { text: gResult, modelUsed: "Groq (Llama-3.3)" };
+    } catch (e) {}
   }
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
     const pRes = await fetch("https://text.pollinations.ai/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        messages: [{ role: "user", content: prompt }],
-        model: "openai"
-      })
+        messages: [{ role: "user", content: prompt }]
+      }),
+      signal: controller.signal
     });
+    clearTimeout(timeout);
+
     if (pRes.ok) {
       const pText = await pRes.text();
-      if (pText && pText.trim()) return { text: pText.trim(), modelUsed: "Pollinations AI" };
+      if (pText) return { text: pText.trim(), modelUsed: "Pollinations AI" };
     }
   } catch (e) {}
 
-  throw new Error("AI မော်ဒယ်များနှင့် ချိတ်ဆက်မရပါ။ ခေတ္တစောင့်ပြီး ထပ်မံကြိုးစားပေးပါ။");
+  throw new Error("AI မော်ဒယ် ချိတ်ဆက်မှု မအောင်မြင်ပါ။ Vercel Environment Variables ထဲတွင် GEMINI_API_KEY ထည့်သွင်းထားခြင်း ရှိမရှိ စစ်ဆေးပေးပါ။");
 }
 
 function filterStrictBurmeseStory(rawText) {
@@ -192,11 +220,11 @@ module.exports = async (req, res) => {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
       const count = parseInt(photoCount) || 4;
 
-      const prompt = `Read this story snippet: "${scriptText.substring(0, 450)}"
-Extract exactly ${count} cinematic scene descriptions and translate into descriptive English image prompts.
-Output format: ${count} English prompts, one per line. No numbering, no introduction.`;
+      const prompt = `Read this Burmese story snippet: "${scriptText.substring(0, 400)}"
+Extract exactly ${count} cinematic scenes and translate into vivid English image generation prompts.
+Output format: Output ONLY ${count} English prompts, one per line. No numbers, no bullet points.`;
 
-      const aiRes = await runAIWithModel(prompt);
+      const aiRes = await runFastAI(prompt);
       const rawLines = aiRes.text.split("\n")
         .map(l => l.replace(/^[\s\d\.\)\-]+/, "").replace(/^SCENE\s*\d+:\s*/i, "").trim())
         .filter(l => l.length > 8);
@@ -219,9 +247,9 @@ Output format: ${count} English prompts, one per line. No numbering, no introduc
     const words = selectedMins * 105;
 
     if (format === "series") {
-      const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
-အခန်းဆက် ၆ ပိုင်းပါဝင်သော မြန်မာပုံပြင် ရေးပေးပါ။
-အပိုင်းတစ်ခုစီတွင် စာလုံးရေ ${words} လုံးခန့် ပါဝင်ရပါမည်။ နံပါတ်စဉ် မတပ်ပါနှင့်။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။
+      const prompt = `Write a continuous 6-episode Burmese storytelling script about "${topic}" (${genre}).
+Each episode around ${words} words. Output ONLY pure Burmese story text. Under NO circumstances output numbers (1, 2, 3) or English notes.
+Separate episodes strictly with:
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
 === အပိုင်း ၂ ===
@@ -235,7 +263,7 @@ Output format: ${count} English prompts, one per line. No numbering, no introduc
 === အပိုင်း ၆ ===
 [ဇာတ်လမ်းစာသား]`;
 
-      const aiRes = await runAIWithModel(prompt);
+      const aiRes = await runFastAI(prompt);
       const parts = aiRes.text.split(/=== အပိုင်း\s*\d+\s*===/);
 
       const episodes = [];
@@ -256,12 +284,13 @@ Output format: ${count} English prompts, one per line. No numbering, no introduc
       });
 
     } else {
-      const prompt = `ခေါင်းစဉ်: "${topic}" (${genre})
-ပြီးပြည့်စုံသော ရုပ်ရှင်ပုံပြင် ဇာတ်လမ်းစာသားကို မြန်မာဘာသာသက်သက်ဖြင့် စာပိုဒ်လိုက် ရေးပေးပါ။
-စာလုံးရေ ခန့်မှန်းခြေ: ${words} လုံး။
-စည်းမျဉ်း: နံပါတ်စဉ် (၁၊ ၂၊ ၃ သို့မဟုတ် 1, 2, 3) လုံးဝမတပ်ရပါ။ အင်္ဂလိပ်စာလုံး လုံးဝမပါရပါ။ ပုံပြင်စကားပြေ သက်သက်သာ ရေးပါ။`;
+      const prompt = `Write a complete movie story narration in 100% pure Burmese script about "${topic}" (${genre}).
+Length: approximately ${words} Burmese words.
+Rules:
+- Output ONLY the Burmese narrative prose.
+- Absolutely NO numbers (1, 2, 3), NO English words, NO planning notes.`;
 
-      const aiRes = await runAIWithModel(prompt);
+      const aiRes = await runFastAI(prompt);
       const cleanStory = filterStrictBurmeseStory(aiRes.text);
 
       return res.status(200).json({
