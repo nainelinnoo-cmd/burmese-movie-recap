@@ -17,18 +17,13 @@ function initStoryView() {
       .ep-btn { padding: 8px 0; border-radius: 6px; border: 1px solid #334155; background: #1e293b; color: #fff; font-weight: bold; cursor: pointer; font-size: 0.8rem; }
       .ep-btn.active { background: #38bdf8; color: #000; border-color: #38bdf8; }
 
-      /* စာသား Box ထဲရှိ Loading Animation စတိုင် */
-      @keyframes pulseGlow {
-        0%, 100% { opacity: 0.6; transform: scale(0.98); }
-        50% { opacity: 1; transform: scale(1.02); }
-      }
       @keyframes spinRing {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
       }
       .loading-spinner {
-        width: 38px;
-        height: 38px;
+        width: 36px;
+        height: 36px;
         border: 3px solid rgba(56, 189, 248, 0.2);
         border-top: 3px solid #38bdf8;
         border-radius: 50%;
@@ -38,7 +33,6 @@ function initStoryView() {
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
-      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း Box -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း</span>
@@ -80,7 +74,6 @@ function initStoryView() {
           <span>✨ ဇာတ်လမ်းစာသား ရေးထုတ်မည်</span>
         </button>
 
-        <!-- Series ဖြစ်ပါက Ep 1 to 6 ခလုတ်များ -->
         <div id="s-ep-buttons-container" style="display: none; flex-direction: column; gap: 6px;">
           <label style="font-size: 0.75rem; color: #facc15; font-weight: bold;">📺 အပိုင်းများ ရွေးချယ်ရန် (Ep 1 to 6)</label>
           <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px;">
@@ -93,33 +86,42 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- စာသား Box နှင့် ယင်းအတွင်း ထည့်သွင်းထားသော Loading Animation -->
         <div style="position: relative; min-height: 150px;">
           <label id="s-label-current-text" style="font-size: 0.78rem; color: #38bdf8; font-weight: bold; margin-bottom: 4px; display: block;">📖 ထွက်ပေါ်လာသော မြန်မာဇာတ်လမ်းစာသား</label>
-          
           <textarea id="s-script-textarea" rows="6" placeholder="နံပါတ်စဉ်နှင့် အင်္ဂလိပ်စာလုံး လုံးဝမပါသော မြန်မာစာသား ဤနေရာတွင် ပေါ်လာမည်..." style="font-size: 0.85rem; line-height: 1.6; width: 100%; box-sizing: border-box;"></textarea>
 
-          <!-- အနီရောင်ဝိုင်းပြထားသော စာသား Box အတွင်း Loading Animation UI -->
-          <div id="s-box-loader" style="display: none; position: absolute; top: 24px; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.95); border: 1.5px solid #0284c7; border-radius: 8px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; z-index: 10; padding: 12px; box-sizing: border-box;">
+          <div id="s-box-loader" style="display: none; position: absolute; top: 24px; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.96); border: 1.5px solid #0284c7; border-radius: 8px; flex-direction: column; align-items: center; justify-content: center; gap: 8px; z-index: 10; padding: 12px; box-sizing: border-box;">
             <div class="loading-spinner"></div>
             <div style="text-align: center;">
-              <span id="s-box-loading-title" style="color: #38bdf8; font-size: 0.82rem; font-weight: bold; display: block;">Gemini Flash ဖြင့် ရေးသားနေပါသည်...</span>
+              <span id="s-box-loading-title" style="color: #38bdf8; font-size: 0.82rem; font-weight: bold; display: block;">မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...</span>
               <span id="s-box-loading-pct" style="color: #facc15; font-size: 1rem; font-weight: bold;">0%</span>
             </div>
-            <!-- အောက်ခံ Progress Bar အသေး -->
-            <div style="width: 75%; height: 6px; background: #080e1a; border-radius: 4px; overflow: hidden;">
+            <div style="width: 70%; height: 6px; background: #080e1a; border-radius: 4px; overflow: hidden;">
               <div id="s-box-loading-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, #38bdf8, #10b981); transition: width 0.3s ease;"></div>
             </div>
           </div>
         </div>
 
-        <!-- Translate to Prompt ခလုတ် -->
+        <div id="s-audio-preview-box" style="display: none; flex-direction: column; gap: 8px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 10px;">
+          <label style="font-size: 0.75rem; color: #38bdf8; font-weight: bold;">🎙️ အသံသရုပ်ဆောင် ရွေးချယ်ပြီး စမ်းနားထောင်မည်</label>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="s-voice-select" style="height: 40px; font-size: 0.8rem; flex: 1; background: #080e1a; color: #38bdf8; border: 1.5px solid #1e3a8a; border-radius: 8px; padding: 0 8px;">
+              <option value="edge-nilar" selected>👩 နီလာ (Edge-TTS)</option>
+              <option value="edge-thiha">👨 သီဟ (Edge-TTS)</option>
+              <option value="google-my-female">👩 Google TTS (မ)</option>
+            </select>
+            <button onclick="handleGenerateAudioPreview()" id="btn-preview-audio" class="btn" style="height: 40px; background: #10b981; padding: 0 14px; font-weight: bold; flex: 1; display: flex; align-items: center; justify-content: center;">
+              <span>🔊 အသံ စမ်းနားထောင်မည်</span>
+            </button>
+          </div>
+          <audio id="s-preview-audio" controls style="width: 100%; height: 36px; display: none; margin-top: 4px;"></audio>
+        </div>
+
         <button onclick="handleTranslateToPrompts()" id="btn-next-translate-prompt" class="btn" style="display: none; background: #6366f1; padding: 12px; font-weight: bold;">
           <span>🌐 [Translate to Prompt] စာသားမှ English Prompts သို့ ပြောင်းမည်</span>
         </button>
       </div>
 
-      <!-- အဆင့် ၂: English Prompt သီးသန့် Box -->
       <div class="card" id="s-prompts-card" style="display: none; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #a5b4fc;"><span class="step-badge" style="background: #6366f1;">အဆင့် ၂</span> 🎨 English Prompts (ဓာတ်ပုံဖော်ပြချက်များ)</span>
@@ -142,7 +144,6 @@ function initStoryView() {
   `;
 }
 
-// စာသား Box ထဲတွင် Animation နှင့် % အမှန် ပြသပေးသည့် Controller
 function updateBoxLoader(title, percent, show = true) {
   var loader = document.getElementById("s-box-loader");
   var tEl = document.getElementById("s-box-loading-title");
@@ -161,7 +162,6 @@ function updateBoxLoader(title, percent, show = true) {
   if (bEl) bEl.style.width = percent + "%";
 }
 
-// ၁။ ပုံပြင်စာသား ရေးထုတ်ခြင်း (စာသား Box ထဲတွင် ကာတွန်းနှင့် % အမှန် တက်စေမည့် စနစ်)
 async function handleGenerateStoryText() {
   var topic = document.getElementById("s-topic-input").value.trim();
   var format = document.getElementById("s-format-select").value;
@@ -172,25 +172,25 @@ async function handleGenerateStoryText() {
   var textarea = document.getElementById("s-script-textarea");
   var epContainer = document.getElementById("s-ep-buttons-container");
   var nextBtn = document.getElementById("btn-next-translate-prompt");
+  var audioBox = document.getElementById("s-audio-preview-box");
 
   if (!topic) return alert("ဇာတ်လမ်းခေါင်းစဉ် ရိုက်ထည့်ပေးပါ");
 
   btn.disabled = true;
   nextBtn.style.display = "none";
+  audioBox.style.display = "none";
 
-  // စာသား Box ထဲတွင် Loading Animation စတင်ပြသခြင်း
-  var currentPct = 10;
-  updateBoxLoader("Gemini Flash ဖြင့် ချိတ်ဆက်နေပါသည်...", currentPct, true);
+  var currentPct = 15;
+  updateBoxLoader("Gemini Flash ဖြင့် ဇာတ်လမ်းရေးနေပါသည်...", currentPct, true);
 
-  // မရပ်တန့်ဘဲ ၉၀% အထိ သဘာဝကျစွာ တဖြည်းဖြည်း တက်စေခြင်း
   clearInterval(s_loadTimer);
   s_loadTimer = setInterval(function() {
     if (currentPct < 90) {
-      currentPct += Math.floor(Math.random() * 8) + 4;
+      currentPct += Math.floor(Math.random() * 5) + 3;
       if (currentPct > 90) currentPct = 90;
       updateBoxLoader("မြန်မာစာသီးသန့် ဇာတ်လမ်း ရေးသားနေပါသည်...", currentPct, true);
     }
-  }, 400);
+  }, 450);
 
   try {
     var res = await fetch("/api/story/generate-text", {
@@ -225,9 +225,10 @@ async function handleGenerateStoryText() {
       }
 
       btn.innerText = "✨ စာသား အသစ်ပြန်ရေးမည်";
+      audioBox.style.display = "flex";
       nextBtn.style.display = "block";
       btn.disabled = false;
-    }, 600);
+    }, 500);
 
   } catch (err) {
     clearInterval(s_loadTimer);
@@ -238,7 +239,6 @@ async function handleGenerateStoryText() {
   }
 }
 
-// ၂။ Series Episode ရွေးချယ်ခြင်း
 function selectStoryEpisode(epNum) {
   if (!s_storyData || !s_storyData.episodes) return;
   s_currentEpNum = epNum;
@@ -256,7 +256,45 @@ function selectStoryEpisode(epNum) {
   document.getElementById("s-script-textarea").value = ep.text;
 }
 
-// ၃။ မြန်မာစာမှ English Prompts သို့ Translate လုပ်ခြင်း
+async function handleGenerateAudioPreview() {
+  var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var voice = document.getElementById("s-voice-select").value;
+  var btn = document.getElementById("btn-preview-audio");
+  var audioPlayer = document.getElementById("s-preview-audio");
+
+  if (!scriptText) return alert("စာသား မရှိသေးပါ");
+
+  btn.disabled = true;
+  btn.innerText = "⏳ အသံဖိုင် ထုတ်နေသည်...";
+
+  try {
+    var res = await fetch("/api/story/generate-text", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "generate_audio",
+        scriptText: scriptText,
+        voice: voice
+      })
+    });
+
+    var data = await res.json();
+    if (!res.ok) throw new Error(data.error);
+
+    var audioBlob = new Blob([Uint8Array.from(atob(data.audioBase64), function(c) { return c.charCodeAt(0); })], { type: "audio/mp3" });
+    audioPlayer.src = URL.createObjectURL(audioBlob);
+    audioPlayer.style.display = "block";
+    audioPlayer.play();
+
+    btn.innerText = "🔊 အသံ စမ်းနားထောင်မည်";
+  } catch (err) {
+    alert("Audio Error: " + err.message);
+    btn.innerText = "🔊 အသံ စမ်းနားထောင်မည်";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 async function handleTranslateToPrompts() {
   var scriptText = document.getElementById("s-script-textarea").value.trim();
   var count = document.getElementById("s-photo-count").value;
