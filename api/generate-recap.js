@@ -46,7 +46,7 @@ module.exports = async (req, res) => {
     const { audioBase64, tone, videoDuration } = req.body;
     if (!audioBase64) return res.status(400).json({ error: "အသံဖိုင်ဒေတာ မပါဝင်ပါ" });
 
-    // အဆင့် ၁: Groq Whisper STT (၁ စက္ကန့်ခန့်)
+    // Step 1: STT Transcription via Groq Whisper
     const audioBuffer = Buffer.from(audioBase64, "base64");
     const file = await toFile(audioBuffer, "audio.wav");
     const transcript = await groq.audio.transcriptions.create({
@@ -54,16 +54,20 @@ module.exports = async (req, res) => {
       model: "whisper-large-v3",
     });
 
-    // အဆင့် ၂: Gemini Recap ရေးသားခြင်း (၁.၅ စက္ကန့်ခန့်)
+    // Step 2: ဗီဒီယို ကြာချိန် အတိအကျနှင့် ကိုက်ညီသော စကားလုံးအရေအတွက် တွက်ချက်ခြင်း (၁ မိနစ်လျှင် ၁၂၅ လုံးနှုန်း)
     const duration = videoDuration || 60;
-    const targetWordCount = Math.round((duration / 60) * 135);
+    const targetWordCount = Math.max(120, Math.round((duration / 60) * 125));
 
-    const prompt = `You are a movie recap storyteller. Based on this audio transcript: "${transcript.text}", write a complete Burmese movie recap in a "${tone}" tone.
-IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words. Use commas and short phrases. Output ONLY fluent Burmese script text without markdown.`;
+    const prompt = `You are an expert movie recap storyteller. Based on this audio transcript: "${transcript.text}", write a complete, captivating Burmese movie recap in a "${tone}" tone.
+CRITICAL TIMING REQUIREMENT:
+The video is EXACTLY ${duration} seconds long (about ${Math.floor(duration/60)} minutes and ${Math.round(duration%60)} seconds).
+You MUST write approximately ${targetWordCount} Burmese words with full plot details and scene commentary.
+The voiceover MUST continue throughout the video and MUST NOT finish early.
+Break thoughts into short, readable phrases using commas and punctuation.
+Output ONLY the spoken Burmese script text without any titles or markdown tags.`;
 
     const recapScript = await runGeminiRecapFast(prompt);
 
-    // Timeout ကင်းစေရန် စာသားကို ချက်ချင်း ပြန်ပို့ပေးခြင်း
     return res.status(200).json({
       script: recapScript
     });
