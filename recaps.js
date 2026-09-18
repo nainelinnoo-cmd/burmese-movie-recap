@@ -17,6 +17,39 @@ function initRecapsView() {
   if (!container) return;
 
   container.innerHTML = `
+    <style>
+      /* အသံသရုပ်ဆောင် Box နှင့် Dropdown အရောင်စုံ Styling */
+      #recap-voice-actor {
+        background: linear-gradient(135deg, #0f172a, #1e293b);
+        border: 1.5px solid #38bdf8;
+        color: #38bdf8;
+        font-weight: bold;
+        border-radius: 8px;
+        padding: 0 10px;
+        box-shadow: 0 0 12px rgba(56, 189, 248, 0.25);
+      }
+      #recap-voice-actor optgroup {
+        background: #090d16;
+        font-weight: bold;
+      }
+      #recap-voice-actor optgroup[label*="Edge"] {
+        color: #38bdf8;
+      }
+      #recap-voice-actor optgroup[label*="Google"] {
+        color: #4ade80;
+      }
+      #recap-voice-actor option.opt-male {
+        color: #38bdf8;
+        background: #1e293b;
+        font-weight: 600;
+      }
+      #recap-voice-actor option.opt-female {
+        color: #f472b6;
+        background: #1e293b;
+        font-weight: 600;
+      }
+    </style>
+
     <div style="display: flex; flex-direction: column; gap: 14px;">
       <!-- ၁။ Video ဖိုင်တင်ရန် -->
       <div class="card">
@@ -24,19 +57,21 @@ function initRecapsView() {
         <input type="file" id="recap-video-file" accept="video/*" />
       </div>
 
-      <!-- ၂။ အသံသရုပ်ဆောင် နှင့် စတိုင် -->
+      <!-- ၂။ အသံသရုပ်ဆောင် နှင့် စတိုင် (အရောင်စုံ ပါဝင်သော Voice Selector) -->
       <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
         <div>
           <label style="height: 20px; line-height: 20px; margin-bottom: 6px; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
           <select id="recap-voice-actor" style="height: 44px;">
-            <optgroup label="Microsoft Edge-TTS">
-              <option value="edge-thiha">သီဟ (ကျား - ပုံမှန်)</option>
-              <option value="edge-thiha-deep">သီဟ (ကျား - အသံဩဇာကြီး)</option>
-              <option value="edge-thiha-fast">သီဟ (ကျား - သွက်လက်)</option>
-              <option value="edge-nilar">နီလာ (မ - သာယာကြည်လင်)</option>
+            <optgroup label="⚡ Microsoft Edge-TTS (မြန်မာအသံ)">
+              <option value="edge-thiha" class="opt-male">👨 သီဟ (ကျား - ပုံမှန်)</option>
+              <option value="edge-thiha-deep" class="opt-male">🎙️ သီဟ (ကျား - အသံဩဇာကြီး)</option>
+              <option value="edge-thiha-fast" class="opt-male">⚡ သီဟ (ကျား - သွက်လက်)</option>
+              <option value="edge-nilar" class="opt-female">👩 နီလာ (မ - သာယာကြည်လင်)</option>
+              <option value="edge-nilar-warm" class="opt-female">🌸 နီလာ (မ - ညင်သာနွေးထွေး)</option>
             </optgroup>
-            <optgroup label="Google TTS">
-              <option value="google-my-standard">Google မြန်မာ</option>
+            <optgroup label="🌐 Google TTS (မြန်မာအသံ ၂ မျိုး)">
+              <option value="google-my-female" class="opt-female" selected>👩 Google မြန်မာ (မ - သဘာဝကြည်လင်)</option>
+              <option value="google-my-male" class="opt-male">👨 Google မြန်မာ (ကျား - အသံနက်ဩဇာ)</option>
             </optgroup>
           </select>
         </div>
@@ -105,28 +140,29 @@ function initRecapsView() {
         </div>
       </div>
 
-      <!-- Error Box -->
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
 
-      <!-- Result Studio Content -->
+      <!-- Result Studio Section -->
       <div id="recap-result-box" style="display: none; flex-direction: column; gap: 14px;">
         <div class="card">
           <label>📝 ထုတ်လုပ်ထားသော Recap စာသား</label>
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Player Wrapper -->
+        <!-- Video Player Wrapper (Touch Overlays) -->
         <div id="video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155; user-select: none;">
           <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
 
-          <!-- ၁။ Title / Custom Text Overlay -->
+          <!-- ၁။ Title Overlay -->
           <div id="draggable-title" style="display: none; position: absolute; top: 15px; left: 50%; transform: translateX(-50%); color: #facc15; font-weight: bold; font-size: 24px; cursor: move; z-index: 25; text-shadow: 2px 2px 4px #000; text-align: center; white-space: nowrap;">
             ခေါင်းစဉ် စာသား
           </div>
 
-          <!-- ၂။ Subtitle Overlay -->
-          <div id="draggable-subtitle" style="position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 10px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
-            စာတန်းထိုး ပြသမည့်နေရာ
+          <!-- ၂။ Subtitle Overlay (Touch Resize Handle ↘ ပါဝင်သော စာတန်းထိုး Box) -->
+          <div id="draggable-subtitle" style="position: absolute; bottom: 35px; left: 50%; transform: translateX(-50%); width: 86%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; z-index: 15; touch-action: none; line-height: 1.4;">
+            <span id="subtitle-text-content">စာတန်းထိုး ပြသမည့်နေရာ</span>
+            <!-- SRT Resize Icon Button (↘) -->
+            <div id="sub-resize-handle" style="position: absolute; right: -7px; bottom: -7px; width: 22px; height: 22px; background: #10b981; color: #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; cursor: nwse-resize; touch-action: none; font-weight: bold; box-shadow: 0 0 8px rgba(16,185,129,0.8); z-index: 30;">↘</div>
           </div>
 
           <!-- ၃။ Watermark Overlay -->
@@ -204,32 +240,24 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (စာသားမပါဘဲ O စက်ဝိုင်း Icon များဖြင့်သာ ပြသခြင်း) -->
+          <!-- စာသားနောက်ခံအရောင် / အနားကွပ် ၈ မျိုး (စာသားမပါဘဲ O စက်ဝိုင်း Icon များ) -->
           <div>
             <label style="font-size: 0.75rem; margin-bottom: 6px; display: block;">နောက်ခံအရောင် / စာသားအနားကွပ် (၈ မျိုး)</label>
             <div style="display: flex; gap: 9px; align-items: center; flex-wrap: wrap;">
-              <!-- ၁။ မည်းကြည် -->
               <div onclick="selectBgStyle('rgba(0,0,0,0.75)', this)" class="bg-style-dot" title="မည်းကြည်" style="background: rgba(0,0,0,0.75); width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
-              <!-- ၂။ အနက် -->
               <div onclick="selectBgStyle('#000000', this)" class="bg-style-dot" title="အနက်" style="background: #000000; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၃။ နီကြည် -->
               <div onclick="selectBgStyle('rgba(185,28,28,0.75)', this)" class="bg-style-dot" title="နီကြည်" style="background: #b91c1c; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၄။ ပြာကြည် -->
               <div onclick="selectBgStyle('rgba(30,58,138,0.75)', this)" class="bg-style-dot" title="ပြာကြည်" style="background: #1e3a8a; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၅။ စိမ်းကြည် -->
               <div onclick="selectBgStyle('rgba(20,83,45,0.75)', this)" class="bg-style-dot" title="စိမ်းကြည်" style="background: #14532d; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၆။ ဝါကြည် -->
               <div onclick="selectBgStyle('rgba(180,83,9,0.75)', this)" class="bg-style-dot" title="ဝါကြည်" style="background: #b45309; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၇။ ခရမ်းကြည် -->
               <div onclick="selectBgStyle('rgba(109,40,217,0.75)', this)" class="bg-style-dot" title="ခရမ်းကြည်" style="background: #6d28d9; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
-              <!-- ၈။ အနားကွပ် (နောက်ခံမပါ) -->
               <div onclick="selectBgStyle('stroke', this)" class="bg-style-dot" title="စာသားအနားကွပ် (နောက်ခံမပါ)" style="background: transparent; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px dashed #ffffff; display: flex; align-items: center; justify-content: center; font-size: 10px; color: #fff; font-weight: bold;">⭕</div>
             </div>
           </div>
 
           <div>
             <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
-              <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size)</span>
+              <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size) - စခရင်ပေါ်ရှိ (↘) ကိုလည်း ထိဆွဲနိုင်သည်</span>
               <span id="srt-font-size-val" style="color: #38bdf8; font-weight: bold;">18px</span>
             </div>
             <input type="range" id="srt-size-slider" min="10" max="100" value="18" oninput="changeSrtFontSize(this.value)" style="width: 100%; cursor: pointer;" />
@@ -270,8 +298,10 @@ function initRecapsView() {
   setupTouchDragOverlay("draggable-watermark");
   setupTouchDragOverlay("draggable-blur");
 
+  // Resize Handles
   setupTouchResize("draggable-watermark", "wm-resize-handle");
   setupTouchResize("draggable-blur", "blur-resize-handle");
+  setupSubtitleTouchResize();
 }
 
 function toggleAudioMixerDropdown() {
@@ -392,6 +422,44 @@ function setupTouchDragOverlay(elementId) {
   window.addEventListener("touchmove", onMove, { passive: false });
   window.addEventListener("touchend", onEnd);
   el.addEventListener("mousedown", onStart);
+  window.addEventListener("mousemove", onMove);
+  window.addEventListener("mouseup", onEnd);
+}
+
+// Subtitle Box ကို Touch ဖြင့် Size ချိန်ညှိနိုင်သော စနစ်
+function setupSubtitleTouchResize() {
+  const handle = document.getElementById("sub-resize-handle");
+  const slider = document.getElementById("srt-size-slider");
+  const sizeVal = document.getElementById("srt-font-size-val");
+
+  let isResizing = false;
+  let startX, startSize;
+
+  function onStart(e) {
+    e.stopPropagation();
+    isResizing = true;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    startX = clientX;
+    startSize = srtFontSize;
+  }
+
+  function onMove(e) {
+    if (!isResizing) return;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const deltaX = clientX - startX;
+    let newSize = Math.max(10, Math.min(100, Math.round(startSize + deltaX * 0.35)));
+    srtFontSize = newSize;
+    if (slider) slider.value = newSize;
+    if (sizeVal) sizeVal.innerText = `${newSize}px`;
+    applySrtStyles();
+  }
+
+  function onEnd() { isResizing = false; }
+
+  handle.addEventListener("touchstart", onStart, { passive: false });
+  window.addEventListener("touchmove", onMove, { passive: false });
+  window.addEventListener("touchend", onEnd);
+  handle.addEventListener("mousedown", onStart);
   window.addEventListener("mousemove", onMove);
   window.addEventListener("mouseup", onEnd);
 }
@@ -609,7 +677,6 @@ async function extractAudioOptimized(file) {
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
   const targetSampleRate = 16000;
-  // Payload မကျော်စေရန် STT အတွက်သာ အများဆုံး ၇၀ စက္ကန့် ဖြတ်ယူသည်
   const maxSeconds = Math.min(audioBuffer.duration, 70);
   const targetLength = Math.floor(maxSeconds * targetSampleRate);
 
@@ -652,8 +719,6 @@ async function extractAudioOptimized(file) {
   let binary = "";
   const bytes = new Uint8Array(outBuffer);
   for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-  
-  // audioBuffer.duration သည် ဗီဒီယို၏ အစစ်အမှန် ကြာချိန်အပြည့်အစုံ ဖြစ်သည် (ဥပမာ- ၁၈၂ စက္ကန့်)
   return { audioBase64: btoa(binary), duration: audioBuffer.duration };
 }
 
@@ -665,7 +730,7 @@ async function handleGenerateRecap() {
   const resultBox = document.getElementById("recap-result-box");
   const scriptText = document.getElementById("recap-script-text");
   const videoPlayer = document.getElementById("recap-video-player");
-  const subOverlay = document.getElementById("draggable-subtitle");
+  const textSpan = document.getElementById("subtitle-text-content");
   const generateBtn = document.getElementById("recap-generate-btn");
   const pContainer = document.getElementById("recap-progress-container");
   const pBar = document.getElementById("recap-progress-bar");
@@ -688,7 +753,6 @@ async function handleGenerateRecap() {
 
     const { audioBase64, duration } = await extractAudioOptimized(file);
 
-    // Step 1: STT + Gemini Flash ဖြင့် ဗီဒီယိုအရှည်အလိုက် စာသား ထုတ်ယူခြင်း
     pTitle.innerText = "Gemini Flash က ဗီဒီယိုအပြည့် Recap ဇာတ်လမ်း ရေးသားနေပါသည်...";
     pPercent.innerText = "55%";
     pBar.style.width = "55%";
@@ -705,8 +769,7 @@ async function handleGenerateRecap() {
     const recapScript = scriptData.script;
     scriptText.value = recapScript;
 
-    // Step 2: စာသားအရွယ်အစားအလိုက် အသံဖိုင် ရယူခြင်း (Timeout ကင်းစေရန် သီးသန့်ခေါ်သည်)
-    pTitle.innerText = "မြန်မာ အသံသရုပ်ဆောင် အသံဖိုင် ဖန်တီးနေပါသည်...";
+    pTitle.innerText = "ရွေးချယ်ထားသော အသံဖိုင် ဖန်တီးနေပါသည်...";
     pPercent.innerText = "80%";
     pBar.style.width = "80%";
 
@@ -748,7 +811,7 @@ async function handleGenerateRecap() {
       if (!isSrtVisible) return;
       const curr = videoPlayer.currentTime;
       const cue = recapSrtCues.find(c => curr >= c.start && curr <= c.end);
-      subOverlay.innerText = cue ? cue.text : "";
+      if (textSpan) textSpan.innerText = cue ? cue.text : "";
 
       if (Math.abs(videoPlayer.currentTime - currentRecapAudio.currentTime) > 0.3) {
         currentRecapAudio.currentTime = videoPlayer.currentTime;
