@@ -90,9 +90,14 @@ async function fetchAudioSafe(text, voice) {
   try { return await fetchEdgeTTS(text, voice); } catch (e) { return await fetchGoogleTTSSafe(text); }
 }
 
-// ၃။ အဆင့်ဆင့် Fallback စနစ်ဖြင့် AI ခေါ်ယူခြင်း
+// ၃။ AI Engine (Gemini Flash & Multi-Model Engine)
 async function runStoryAI(prompt) {
-  const GEMINI_MODELS = ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"];
+  const GEMINI_MODELS = [
+    "gemini-2.5-flash",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-3.5-flash"
+  ];
 
   if (process.env.GEMINI_API_KEY) {
     for (const m of GEMINI_MODELS) {
@@ -106,14 +111,32 @@ async function runStoryAI(prompt) {
     }
   }
 
-  // Pollinations AI (Always Online & Key မလို)
+  // Groq Fallback
+  if (process.env.GROQ_API_KEY) {
+    const groqModels = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "llama3-70b-8192"];
+    for (const gm of groqModels) {
+      try {
+        const gRes = await groq.chat.completions.create({
+          model: gm,
+          messages: [
+            { role: "system", content: "You are a professional Burmese storyteller. Output ONLY fluent Burmese story narrative." },
+            { role: "user", content: prompt }
+          ]
+        });
+        const content = gRes.choices[0]?.message?.content?.trim();
+        if (content) return content;
+      } catch (err) {}
+    }
+  }
+
+  // Pollinations Fallback
   try {
     const res = await fetch("https://text.pollinations.ai/", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         messages: [
-          { role: "system", content: "You are a Burmese storyteller. Output strictly in pure Burmese language only." },
+          { role: "system", content: "You are a professional Burmese storyteller. Output strictly in pure Burmese language only." },
           { role: "user", content: prompt }
         ]
       })
@@ -127,28 +150,40 @@ async function runStoryAI(prompt) {
   throw new Error("AI ဆာဗာ ခေတ္တမအားလပ်ပါ။ ခေတ္တစောင့်ပြီး ပြန်လည်ကြိုးစားပေးပါခင်ဗျာ။");
 }
 
-// English စာကြောင်းများ (We need about 105 words... စသည်) ကို သန့်စင်ပေးသည့် စနစ်
+// English စာကြောင်းများနှင့် Meta ရှင်းလင်းချက်များကို အမြစ်ပြတ် သန့်စင်ပေးသည့် စနစ်
 function cleanPureBurmeseText(raw) {
   if (!raw) return "";
   let text = raw.replace(/```json/gi, "").replace(/```/g, "").trim();
 
-  // AI ၏ English Reasoning စကားလုံးများကို ဖြတ်ထုတ်ခြင်း
-  text = text.replace(/We need about[\s\S]*/i, "")
-             .replace(/Let's write[\s\S]*/i, "")
-             .replace(/Here is the story[\s\S]*?:/i, "")
-             .replace(/Sure, here is[\s\S]*?:/i, "")
-             .trim();
+  try {
+    const parsed = JSON.parse(text);
+    if (typeof parsed === "object") {
+      text = parsed.story_text || parsed.story || parsed.script || parsed.text || Object.values(parsed).join("\n") || text;
+    }
+  } catch (e) {}
 
-  // အင်္ဂလိပ်စာလုံး သီးသန့်ဖြစ်နေသော အောက်ခြေစာကြောင်းများကို ဖယ်ထုတ်ခြင်း
+  text = text.replace(/\\n/g, "\n").replace(/\\"/g, '"').replace(/^"/, "").replace(/"$/, "");
+
+  // AI ၏ English Meta စကားလုံးများ ပါလာပါက ထိုနေရာမှစ၍ အကုန်ဖြတ်ထုတ်ခြင်း
+  const cutPattern = /(?:\\?"?\s*\n*\s*(?:But\s+we\s+need|We\s+need|Let's\s+instead|Let's\s+try|This\s+seems|Note:|Word\s+count|Here\s+is|Sure|Explanation)[\s\S]*)/i;
+  text = text.replace(cutPattern, "").trim();
+
+  // စာကြောင်းတစ်ကြောင်းချင်းစီ စစ်ဆေးပြီး အင်္ဂလိပ်စာပိုများသော စာကြောင်းများကို ဖယ်ထုတ်ခြင်း
   const lines = text.split("\n");
-  const filtered = lines.filter(l => {
-    const t = l.trim();
-    if (!t) return false;
-    const isPureEng = /^[A-Za-z0-9\s.,'":;!?()\-–—_#*]+$/.test(t);
-    return !isPureEng;
-  });
+  const cleanedLines = [];
+  for (let line of lines) {
+    let t = line.trim();
+    if (!t) continue;
+    // အမြီးပိုင်းတွင် ကပ်ပါလာသော English စာစုများကို ဖြတ်ထုတ်ခြင်း
+    t = t.replace(/[a-zA-Z\s.,'":;!?()\-–—_#*]{8,}$/, "").trim();
+    const burmeseCount = (t.match(/[\u1000-\u109F]/g) || []).length;
+    const englishCount = (t.match(/[a-zA-Z]/g) || []).length;
+    if (burmeseCount > 0 && burmeseCount >= englishCount) {
+      cleanedLines.push(t);
+    }
+  }
 
-  return filtered.join("\n").trim() || text;
+  return cleanedLines.join("\n").trim() || text.replace(/[a-zA-Z0-9\n\\"]{6,}/g, "").trim();
 }
 
 module.exports = async (req, res) => {
@@ -200,9 +235,10 @@ Output ONLY the scenes.`;
       const words = selectedMins * 105;
 
       if (format === "series") {
-        const prompt = `Write a continuous 6-episode story series in 100% pure Burmese about "${topic}" (${genre}).
-Each episode MUST contain around ${words} Burmese words.
-Strict Rule: Pure Burmese language only. Do NOT write any English notes or reasoning.
+        const prompt = `You are a Burmese storyteller.
+Write a continuous 6-episode story series strictly in pure Burmese language about "${topic}" (${genre}).
+Each episode should be approximately ${words} Burmese words.
+STRICT RULE: Write 100% in Burmese script. DO NOT output ANY English words, letters, word counts, or notes.
 Format:
 === အပိုင်း ၁ ===
 [ဇာတ်လမ်းစာသား]
@@ -236,13 +272,13 @@ Format:
         });
 
       } else {
-        // Movie Story: စာသားစစ်စစ် တိုက်ရိုက် ရေးသားစေခြင်း
-        const prompt = `Write a complete movie storytelling script in 100% pure Burmese about "${topic}" (${genre}).
+        const prompt = `You are a Burmese storyteller.
+Write an engaging, complete movie storytelling script strictly in pure Burmese language about "${topic}" (${genre}).
 Length: approximately ${words} Burmese words.
-CRITICAL RULES:
-- Output ONLY the spoken Burmese story text.
-- Do NOT output any English words, English translation, notes, or thoughts.
-- Fluent and captivating Burmese for narration.`;
+STRICT RULES:
+1. Write 100% in pure Burmese script (မြန်မာစာသီးသန့်).
+2. Under NO circumstance should you output any English words, letters, word count checks, thoughts, or explanations.
+3. Output ONLY the story narrative directly.`;
 
         const rawStory = await runStoryAI(prompt);
         const finalStory = cleanPureBurmeseText(rawStory);
