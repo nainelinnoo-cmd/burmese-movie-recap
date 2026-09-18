@@ -1,6 +1,5 @@
 var s_storyData = null;
 var s_currentEpNum = 1;
-var s_selectedVoice = "nilar-clear"; // Default စခရင်ပုံအတိုင်း နီလာ (ကြည်လင်)
 var s_promptsArray = [];
 var s_sceneImages = [];
 var s_aspectRatio = "16:9";
@@ -31,18 +30,6 @@ function initStoryView() {
       .ratio-btn { flex: 1; padding: 8px; background: #1e293b; border: 1px solid #334155; color: #94a3b8; font-weight: bold; border-radius: 6px; cursor: pointer; font-size: 0.8rem; }
       .ratio-btn.active { background: #38bdf8; color: #000; border-color: #38bdf8; }
 
-      /* စခရင်ပုံထဲကအတိုင်း Custom Voice List စတိုင် */
-      .voice-section-title { font-size: 0.78rem; font-weight: bold; color: #94a3b8; margin: 6px 0 2px 4px; display: block; }
-      .voice-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 12px; border-radius: 8px; cursor: pointer; transition: background 0.15s ease; border-bottom: 1px solid #1e293b; }
-      .voice-row:last-child { border-bottom: none; }
-      .voice-row:hover { background: #1e293b; }
-      .voice-row.selected { background: rgba(56, 189, 248, 0.12); }
-      .voice-label-wrap { display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 500; color: #f1f5f9; }
-      .custom-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #64748b; display: flex; align-items: center; justify-content: center; }
-      .voice-row.selected .custom-radio { border-color: #38bdf8; }
-      .custom-radio-dot { width: 9px; height: 9px; border-radius: 50%; background: #38bdf8; display: none; }
-      .voice-row.selected .custom-radio-dot { display: block; }
-
       @keyframes spinRing {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -59,7 +46,6 @@ function initStoryView() {
 
     <div style="display: flex; flex-direction: column; gap: 14px;">
 
-      <!-- အဆင့် ၁: ပုံပြင်စာသား ရေးထုတ်ခြင်း Box -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px;">
         <span style="font-weight: bold; color: #38bdf8;"><span class="step-badge">အဆင့် ၁</span> 📝 ပုံပြင်စာသား ရေးသားထုတ်ယူခြင်း</span>
 
@@ -127,69 +113,39 @@ function initStoryView() {
           </div>
         </div>
 
-        <!-- အသံသရုပ်ဆောင် ရွေးချယ်မှု စာရင်း (စခရင်ပုံအတိုင်း အသံ ၇ မျိုး အပြည့်အစုံ) -->
-        <div id="s-audio-preview-box" style="display: none; flex-direction: column; gap: 10px; background: #0b1120; border: 1.5px solid #1e293b; border-radius: 12px; padding: 12px;">
-          <div style="display: flex; justify-content: space-between; align-items: center;">
-            <span style="font-size: 0.82rem; color: #38bdf8; font-weight: bold;">🎙️ အသံသရုပ်ဆောင် ရွေးချယ်ပြီး စမ်းနားထောင်မည်</span>
+        <!-- Voice Actor Dropdown Box -->
+        <div id="s-audio-preview-box" style="display: none; flex-direction: column; gap: 10px; background: #0f172a; border: 1.5px solid #1e3a8a; border-radius: 10px; padding: 12px;">
+          <label style="font-size: 0.78rem; color: #38bdf8; font-weight: bold;">🎙️ အသံသရုပ်ဆောင် ရွေးချယ်ပြီး စမ်းနားထောင်မည်</label>
+          
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <select id="s-voice-dropdown" style="flex: 1.2; height: 42px; background: #090d16; color: #38bdf8; font-weight: bold; border: 1.5px solid #334155; border-radius: 8px; padding: 0 10px; font-size: 0.82rem;">
+              <optgroup label="Edge-TTS (သဘာဝ)">
+                <option value="thiha-regular">👦 သီဟ (ပုံမှန်)</option>
+                <option value="thiha-deep">🎙️ သီဟ (ဩဇာကြီး)</option>
+                <option value="thiha-fast">⚡ သီဟ (သွက်လက်)</option>
+                <option value="nilar-clear" selected>👩 နီလာ (ကြည်လင်)</option>
+                <option value="nilar-warm">🌸 နီလာ (နွေးထွေး)</option>
+              </optgroup>
+              <optgroup label="Google TTS">
+                <option value="google-female">👩 Google (မ)</option>
+                <option value="google-male">👦 Google (ကျား)</option>
+              </optgroup>
+            </select>
+
+            <button onclick="handleGenerateAudioPreview()" id="btn-preview-audio" class="btn" style="flex: 1; height: 42px; background: #10b981; padding: 0 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; font-size: 0.82rem;">
+              <span>🔊 အသံ စမ်းနားထောင်မည်</span>
+            </button>
           </div>
 
-          <!-- စခရင်ပုံထဲက UI ပုံစံ အသံစာရင်း -->
-          <div style="background: #111827; border-radius: 10px; padding: 4px 6px; border: 1px solid #1f2937;">
-            <span class="voice-section-title">Edge-TTS (သဘာဝ)</span>
-
-            <div class="voice-row" onclick="chooseVoice('thiha-regular', this)">
-              <div class="voice-label-wrap"><span>👦</span> <span>သီဟ (ပုံမှန်)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <div class="voice-row" onclick="chooseVoice('thiha-deep', this)">
-              <div class="voice-label-wrap"><span>🎙️</span> <span>သီဟ (ဩဇာကြီး)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <div class="voice-row" onclick="chooseVoice('thiha-fast', this)">
-              <div class="voice-label-wrap"><span>⚡</span> <span>သီဟ (သွက်လက်)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <div class="voice-row selected" onclick="chooseVoice('nilar-clear', this)">
-              <div class="voice-label-wrap"><span>👩</span> <span>နီလာ (ကြည်လင်)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <div class="voice-row" onclick="chooseVoice('nilar-warm', this)">
-              <div class="voice-label-wrap"><span>🌸</span> <span>နီလာ (နွေးထွေး)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <span class="voice-section-title" style="margin-top: 10px;">Google TTS</span>
-
-            <div class="voice-row" onclick="chooseVoice('google-female', this)">
-              <div class="voice-label-wrap"><span>👩</span> <span>Google (မ)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-
-            <div class="voice-row" onclick="chooseVoice('google-male', this)">
-              <div class="voice-label-wrap"><span>👦</span> <span>Google (ကျား)</span></div>
-              <div class="custom-radio"><div class="custom-radio-dot"></div></div>
-            </div>
-          </div>
-
-          <!-- အသံထုတ်လုပ် စမ်းနားထောင်မည့် ခလုတ် -->
-          <button onclick="handleGenerateAudioPreview()" id="btn-preview-audio" class="btn" style="background: #10b981; padding: 12px; font-weight: bold; display: flex; align-items: center; justify-content: center; gap: 6px;">
-            <span>🔊 အသံ စမ်းနားထောင်မည်</span>
-          </button>
-
-          <audio id="s-preview-audio" controls style="width: 100%; height: 40px; display: none; margin-top: 4px;"></audio>
+          <audio id="s-preview-audio" controls style="width: 100%; height: 38px; display: none; margin-top: 4px;"></audio>
         </div>
 
-        <!-- Translate to Prompt ခလုတ် -->
         <button onclick="handleTranslateToPrompts()" id="btn-next-translate-prompt" class="btn" style="display: none; background: #6366f1; padding: 12px; font-weight: bold;">
           <span>🌐 [Translate to Prompt] စာသားမှ English Prompts သို့ ပြောင်းမည်</span>
         </button>
       </div>
 
-      <!-- အဆင့် ၂: English Prompts သီးသန့် Box -->
+      <!-- အဆင့် ၂: English Prompts Box -->
       <div class="card" id="s-prompts-card" style="display: none; flex-direction: column; gap: 10px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
           <span style="font-weight: bold; color: #a5b4fc;"><span class="step-badge" style="background: #6366f1;">အဆင့် ၂</span> 🎨 English Prompts (ဓာတ်ပုံဖော်ပြချက်များ)</span>
@@ -262,14 +218,6 @@ function initStoryView() {
 
     </div>
   `;
-}
-
-function chooseVoice(voiceKey, el) {
-  s_selectedVoice = voiceKey;
-  document.querySelectorAll(".voice-row").forEach(function(row) {
-    row.classList.remove("selected");
-  });
-  if (el) el.classList.add("selected");
 }
 
 function updateBoxLoader(title, percent, show = true) {
@@ -386,13 +334,16 @@ function selectStoryEpisode(epNum) {
 
 async function handleGenerateAudioPreview() {
   var scriptText = document.getElementById("s-script-textarea").value.trim();
+  var voiceSelect = document.getElementById("s-voice-dropdown");
+  var selectedVoice = voiceSelect ? voiceSelect.value : "nilar-clear";
+
   var btn = document.getElementById("btn-preview-audio");
   var audioPlayer = document.getElementById("s-preview-audio");
 
   if (!scriptText) return alert("စာသား မရှိသေးပါ");
 
   btn.disabled = true;
-  btn.innerHTML = '<span>⏳ အသံဖိုင် စီစဉ်ထုတ်ယူနေသည်...</span>';
+  btn.innerHTML = '<span>⏳ အသံဖိုင် ထုတ်နေသည်...</span>';
 
   try {
     var res = await fetch("/api/story/generate-text", {
@@ -401,7 +352,7 @@ async function handleGenerateAudioPreview() {
       body: JSON.stringify({
         action: "generate_audio",
         scriptText: scriptText,
-        voice: s_selectedVoice
+        voice: selectedVoice
       })
     });
 
