@@ -5,6 +5,11 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
 const HF_SPACE_URL = "https://nlopro-burmese-tts-api.hf.space";
 
+// Vercel Timeout မဖြစ်စေရန် 60 စက္ကန့်အထိ သတ်မှတ်ခြင်း
+module.exports.config = {
+  maxDuration: 60,
+};
+
 async function fetchGoogleTTS(text) {
   const chunks = text.match(/[^။!?\n]+[။!?\n]?/g) || [text];
   const audioBuffers = [];
@@ -21,14 +26,15 @@ async function fetchGoogleTTS(text) {
   throw new Error("Google TTS မှ အသံမရရှိပါ");
 }
 
-async function fetchAudioSafe(text, voice) {
+async function fetchAudioFast(text, voice) {
   if (voice && voice.startsWith("google-")) {
     return await fetchGoogleTTS(text);
   }
 
+  // Timeout မဖြစ်စေရန် Hugging Face ကို ၅ စက္ကန့်သာ အများဆုံး စောင့်ခြင်း
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12000);
+    const timeout = setTimeout(() => controller.abort(), 5000);
 
     const postRes = await fetch(`${HF_SPACE_URL}/gradio_api/call/predict`, {
       method: "POST",
@@ -51,10 +57,9 @@ async function fetchAudioSafe(text, voice) {
       }
     }
   } catch (err) {
-    console.warn("HF Space Timeout or Failed, Auto-fallback to Google TTS:", err.message);
+    console.warn("HF Space Timeout (5s), Switching to Google TTS:", err.message);
   }
 
-  // HF Space အဆင်မပြေပါက တန်းမပျက်စေဘဲ Google TTS ဖြင့် အလိုအလျောက် ရယူပေးခြင်း
   return await fetchGoogleTTS(text);
 }
 
@@ -71,7 +76,6 @@ async function runGeminiRecap(prompt) {
   ];
 
   let lastError = null;
-
   if (process.env.GEMINI_API_KEY) {
     for (const model of ACTIVE_MODELS) {
       try {
@@ -82,14 +86,10 @@ async function runGeminiRecap(prompt) {
         if (response && response.text) return response.text.trim();
       } catch (err) {
         lastError = err.message;
-        console.warn(`Gemini (${model}) error:`, err.message);
       }
     }
-  } else {
-    lastError = "GEMINI_API_KEY ထည့်သွင်းထားခြင်း မရှိပါ";
   }
 
-  // Fallback to Groq
   try {
     const gRes = await groq.chat.completions.create({
       model: "llama-3.3-70b-versatile",
@@ -102,7 +102,7 @@ async function runGeminiRecap(prompt) {
     const text = gRes.choices[0]?.message?.content?.trim();
     if (text) return text;
   } catch (groqErr) {
-    console.warn("Groq fallback error:", groqErr.message);
+    console.warn("Groq fallback failed:", groqErr.message);
   }
 
   throw new Error(`AI Model Error: ${lastError}`);
@@ -126,10 +126,10 @@ module.exports = async (req, res) => {
     const targetWordCount = Math.round((duration / 60) * 135);
 
     const prompt = `You are a movie recap storyteller. Based on this audio transcript: "${transcript.text}", write a complete Burmese movie recap in a "${tone}" tone.
-IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words so the voiceover covers the entire video. Use commas and short phrases. Output ONLY fluent Burmese script text without markdown.`;
+IMPORTANT: The video is ${duration} seconds long. Write approximately ${targetWordCount} Burmese words. Use commas and short phrases. Output ONLY fluent Burmese script text.`;
 
     const recapScript = await runGeminiRecap(prompt);
-    const voiceoverBase64 = await fetchAudioSafe(recapScript, voice);
+    const voiceoverBase64 = await fetchAudioFast(recapScript, voice);
 
     return res.status(200).json({
       script: recapScript,
