@@ -75,24 +75,20 @@ function initRecapsView() {
 
       <div id="recap-error-box" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid #ef4444; border-radius: 10px; padding: 12px; font-size: 0.85rem; color: #fca5a5;"></div>
 
-      <!-- Result View -->
       <div id="recap-result-box" style="display: none; flex-direction: column; gap: 12px;">
         <div class="card">
           <label>📝 ထုတ်လုပ်ထားသော Recap စာသား</label>
           <textarea id="recap-script-text" rows="4"></textarea>
         </div>
 
-        <!-- Video Player Wrapper (Controls ပါဝင်ပြီး Video Play ရရှိစေရန် ပြင်ဆင်ထားသည်) -->
         <div id="video-wrapper" style="position: relative; width: 100%; aspect-ratio: 16/9; background: #000; border-radius: 12px; overflow: hidden; border: 1px solid #334155;">
           <video id="recap-video-player" controls playsinline style="width: 100%; height: 100%; object-fit: contain;"></video>
           
-          <!-- Draggable Subtitle Box -->
           <div id="draggable-subtitle" style="position: absolute; bottom: 45px; left: 50%; transform: translateX(-50%); width: 88%; text-align: center; color: #ffffff; background: rgba(0,0,0,0.75); padding: 6px 12px; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: move; user-select: none; z-index: 10; touch-action: none;">
             စာတန်းထိုး နေရာရွှေ့နိုင်သည်
           </div>
         </div>
 
-        <!-- SRT Controller Card -->
         <div class="card" style="display: flex; flex-direction: column; gap: 12px; background: #131d31;">
           <div style="display: flex; justify-content: space-between; align-items: center;">
             <span style="font-size: 0.9rem; font-weight: bold; color: #38bdf8;">⚙️ Subtitle (SRT) စနစ်</span>
@@ -102,13 +98,11 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- Color Icons & Background Swatches & 10-100 Size Slider -->
           <div style="display: flex; flex-direction: column; gap: 10px;">
-            <!-- Font Color Icons -->
             <div>
-              <label style="font-size: 0.75rem; margin-bottom: 6px;">စာသားအရောင် (Icons ဖြင့် ရွေးချယ်ပါ)</label>
+              <label style="font-size: 0.75rem; margin-bottom: 6px;">စာသားအရောင် (Color Icons)</label>
               <div style="display: flex; gap: 10px; align-items: center;">
-                <div onclick="selectFontColor('#ffffff', this)" class="color-dot active-dot" style="background: #ffffff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
+                <div onclick="selectFontColor('#ffffff', this)" class="color-dot" style="background: #ffffff; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid #38bdf8;"></div>
                 <div onclick="selectFontColor('#facc15', this)" class="color-dot" style="background: #facc15; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
                 <div onclick="selectFontColor('#38bdf8', this)" class="color-dot" style="background: #38bdf8; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
                 <div onclick="selectFontColor('#4ade80', this)" class="color-dot" style="background: #4ade80; width: 26px; height: 26px; border-radius: 50%; cursor: pointer; border: 2px solid transparent;"></div>
@@ -117,7 +111,6 @@ function initRecapsView() {
               </div>
             </div>
 
-            <!-- Background Color Icons -->
             <div>
               <label style="font-size: 0.75rem; margin-bottom: 6px;">နောက်ခံအရောင်</label>
               <div style="display: flex; gap: 8px;">
@@ -128,7 +121,6 @@ function initRecapsView() {
               </div>
             </div>
 
-            <!-- Font Size Slider (10 to 100) -->
             <div>
               <div style="display: flex; justify-content: space-between; font-size: 0.75rem; margin-bottom: 4px;">
                 <span style="color: #94a3b8;">စာလုံးဆိုဒ် (Font Size)</span>
@@ -138,12 +130,11 @@ function initRecapsView() {
             </div>
           </div>
 
-          <!-- SRT Edit & Real-Time Save Container (Toggleable) -->
           <div id="srt-edit-panel" style="display: none; flex-direction: column; gap: 8px; margin-top: 8px;">
-            <label style="font-size: 0.75rem; color: #facc15;">✏️ SRT Script ကို အချိန်/စာသား စိတ်ကြိုက် ပြင်ဆင်ပါ-</label>
+            <label style="font-size: 0.75rem; color: #facc15;">✏️ SRT Script ကို စိတ်ကြိုက် ပြင်ဆင်ပါ-</label>
             <textarea id="srt-edit-textarea" rows="6" style="font-family: monospace; font-size: 0.8rem;"></textarea>
             <button onclick="saveAndApplySrtEdit()" class="btn" style="background: #10b981; padding: 10px; font-size: 0.85rem;">
-              <span>💾 SRT သိမ်းဆည်းပြီး Video တွင် Real-Time စစ်မည်</span>
+              <span>💾 SRT သိမ်းဆည်းပြီး Video တွင် စစ်မည်</span>
             </button>
           </div>
 
@@ -211,7 +202,7 @@ function saveAndApplySrtEdit() {
   const newSrtText = document.getElementById("srt-edit-textarea").value;
   window.currentSrtRaw = newSrtText;
   recapSrtCues = parseSrtCues(newSrtText);
-  alert("SRT ကို အောင်မြင်စွာ သိမ်းဆည်းပြီး Video တွင် Real-Time စစ်ဆေးနိုင်ပါပြီ!");
+  alert("SRT ကို သိမ်းဆည်းပြီးပါပြီ!");
 }
 
 function toggleSrtVisibility() {
@@ -411,7 +402,6 @@ async function handleGenerateRecap() {
     videoPlayer.volume = document.getElementById("vol-video-slider").value / 100;
     currentRecapAudio.volume = document.getElementById("vol-ai-slider").value / 100;
 
-    // Real-Time Subtitle View Update
     videoPlayer.ontimeupdate = () => {
       if (!isSrtVisible) return;
       const curr = videoPlayer.currentTime;
