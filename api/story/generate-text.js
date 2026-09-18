@@ -197,9 +197,9 @@ function splitTextForTTS(text, maxLength = 180) {
   return chunks.filter(Boolean);
 }
 
-// ==========================================
-// TTS ENGINE (EDGE 5 မျိုး + GOOGLE 2 မျိုး)
-// ==========================================
+// ============================================================
+// TTS ENGINE (EDGE 5 + GOOGLE 2)
+// ============================================================
 
 async function fetchGoogleTTSChunk(text) {
   const url = `https://translate.google.com/translate_tts?ie=UTF-8&q=${encodeURIComponent(text)}&tl=my&client=tw-ob`;
@@ -230,36 +230,42 @@ async function fetchGoogleTTS(text) {
   return Buffer.concat(buffers).toString("base64");
 }
 
-function mapVoiceParameters(voiceKey) {
+function resolveVoiceMeta(voiceKey) {
   const key = String(voiceKey || "").toLowerCase();
 
-  switch (key) {
-    case "thiha-deep":
-      return { voiceName: "my-MM-ThihaNeural", rate: "-5%", pitch: "-10Hz", label: "သီဟ (ဩဇာကြီး)" };
-    case "thiha-fast":
-      return { voiceName: "my-MM-ThihaNeural", rate: "+12%", pitch: "+0Hz", label: "သီဟ (သွက်လက်)" };
-    case "nilar-clear":
-      return { voiceName: "my-MM-NilarNeural", rate: "+0%", pitch: "+5Hz", label: "နီလာ (ကြည်လင်)" };
-    case "nilar-warm":
-      return { voiceName: "my-MM-NilarNeural", rate: "-8%", pitch: "-5Hz", label: "နီလာ (နွေးထွေး)" };
-    case "thiha-regular":
-    case "edge-thiha":
-    default:
-      if (key.includes("nilar")) {
-        return { voiceName: "my-MM-NilarNeural", rate: "+0%", pitch: "+0Hz", label: "နီလာ (ပုံမှန်)" };
-      }
-      return { voiceName: "my-MM-ThihaNeural", rate: "+0%", pitch: "+0Hz", label: "သီဟ (ပုံမှန်)" };
+  if (key === "thiha-deep") {
+    return { isEdge: true, voiceName: "my-MM-ThihaNeural", rate: "-4%", pitch: "-8Hz", label: "သီဟ (ဩဇာကြီး)" };
   }
+  if (key === "thiha-fast") {
+    return { isEdge: true, voiceName: "my-MM-ThihaNeural", rate: "+12%", pitch: "+0Hz", label: "သီဟ (သွက်လက်)" };
+  }
+  if (key === "thiha-regular" || key === "edge-thiha") {
+    return { isEdge: true, voiceName: "my-MM-ThihaNeural", rate: "+0%", pitch: "+0Hz", label: "သီဟ (ပုံမှန်)" };
+  }
+  if (key === "nilar-warm") {
+    return { isEdge: true, voiceName: "my-MM-NilarNeural", rate: "-6%", pitch: "-4Hz", label: "နီလာ (နွေးထွေး)" };
+  }
+  if (key === "nilar-clear" || key === "edge-nilar") {
+    return { isEdge: true, voiceName: "my-MM-NilarNeural", rate: "+0%", pitch: "+4Hz", label: "နီလာ (ကြည်လင်)" };
+  }
+  if (key === "google-male") {
+    return { isEdge: true, voiceName: "my-MM-ThihaNeural", rate: "+0%", pitch: "-2Hz", label: "Google (ကျား)" };
+  }
+  if (key === "google-female" || key === "google-my-female") {
+    return { isEdge: false, voiceName: "google-female", rate: "+0%", pitch: "+0Hz", label: "Google (မ)" };
+  }
+
+  return { isEdge: true, voiceName: "my-MM-ThihaNeural", rate: "+0%", pitch: "+0Hz", label: "သီဟ (ပုံမှန်)" };
 }
 
-async function startHFJob(text, voiceParams) {
+async function startHFJob(text, meta) {
   const url = `${HF_SPACE_URL}/gradio_api/call/predict`;
 
   let res = await fetchWithTimeout(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      data: [text, voiceParams.voiceName, voiceParams.rate, voiceParams.pitch]
+      data: [text, meta.voiceName, meta.rate, meta.pitch]
     })
   }, TIMEOUTS.hfTTS).catch(() => null);
 
@@ -267,21 +273,13 @@ async function startHFJob(text, voiceParams) {
     res = await fetchWithTimeout(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [text, voiceParams.voiceName] })
+      body: JSON.stringify({ data: [text, meta.voiceName] })
     }, TIMEOUTS.hfTTS).catch(() => null);
   }
 
   if (!res || !res.ok) {
-    res = await fetchWithTimeout(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ data: [text] })
-    }, TIMEOUTS.hfTTS);
-  }
-
-  if (!res.ok) {
-    const errorText = await res.text().catch(() => "");
-    throw new Error(`HF TTS POST failed (${res.status}) ${errorText.slice(0, 300)}`);
+    const errorText = res ? await res.text().catch(() => "") : "";
+    throw new Error(`HF TTS POST failed ${errorText.slice(0, 200)}`);
   }
 
   const data = await res.json().catch(() => null);
@@ -327,8 +325,9 @@ async function waitForHFResult(eventId) {
 
   if (!res.ok) throw new Error(`HF TTS stream HTTP ${res.status}`);
   const streamText = await res.text();
+  const lines = streamText.split(/\r?\n/);
 
-  for (const line of streamText.split(/\r?\n/)) {
+  for (const line of lines) {
     if (!line.startsWith("data:")) continue;
     const raw = line.slice(5).trim();
     if (!raw || raw === "[DONE]") continue;
@@ -369,65 +368,46 @@ async function resolveHFFileToBase64(audioValue) {
   throw new Error("Unsupported HF audio result format");
 }
 
-async function fetchEdgeTTS(text, voiceKey = "thiha-regular") {
-  const voiceParams = mapVoiceParameters(voiceKey);
+async function fetchEdgeTTSDirect(text, meta) {
   const chunks = splitTextForTTS(text, 180);
   if (!chunks.length) throw new Error("Edge TTS: Empty text");
 
   const audioBuffers = [];
   for (const chunk of chunks) {
-    const job = await startHFJob(chunk, voiceParams);
+    const job = await startHFJob(chunk, meta);
     const result = await waitForHFResult(job);
     const base64 = await resolveHFFileToBase64(result);
     if (!base64) throw new Error("Edge TTS returned empty audio");
     audioBuffers.push(Buffer.from(base64, "base64"));
     if (chunks.length > 1) await sleep(100);
   }
-  return {
-    audioBase64: Buffer.concat(audioBuffers).toString("base64"),
-    voiceLabel: voiceParams.label
-  };
+  return Buffer.concat(audioBuffers).toString("base64");
 }
 
 async function fetchAudioSafe(text, voiceKey) {
   const script = validateScript(text);
-  const v = String(voiceKey || "nilar-clear").toLowerCase();
+  const meta = resolveVoiceMeta(voiceKey);
   const errors = [];
 
-  // Google TTS စစ်ဆေးခြင်း
-  if (v === "google-female" || v === "google-my-female" || v === "google-male") {
+  if (!meta.isEdge) {
     try {
       const audio = await fetchGoogleTTS(script);
-      return {
-        audioBase64: audio,
-        provider: "Google TTS",
-        voice: v.includes("male") && !v.includes("female") ? "Google (ကျား)" : "Google (မ)"
-      };
+      return { audioBase64: audio, provider: "Google TTS", voice: meta.label };
     } catch (err) {
       errors.push(`Google TTS: ${err.message}`);
     }
   }
 
-  // Edge-TTS ခေါ်ယူခြင်း
   try {
-    const res = await fetchEdgeTTS(script, v);
-    return {
-      audioBase64: res.audioBase64,
-      provider: "Edge-TTS (သဘာဝ)",
-      voice: res.voiceLabel
-    };
+    const audio = await fetchEdgeTTSDirect(script, meta);
+    return { audioBase64: audio, provider: "Edge-TTS (သဘာဝ)", voice: meta.label };
   } catch (err) {
-    errors.push(`Edge-TTS: ${err.message}`);
+    errors.push(`Edge-TTS (${meta.label}): ${err.message}`);
   }
 
-  // Fallback Google TTS
   try {
     const audio = await fetchGoogleTTS(script);
-    return {
-      audioBase64: audio,
-      provider: "Google TTS (Fallback)",
-      voice: "Google (မ)"
-    };
+    return { audioBase64: audio, provider: "Google TTS", voice: "Google (မ)" };
   } catch (err) {
     errors.push(`Google Fallback: ${err.message}`);
   }
@@ -435,9 +415,9 @@ async function fetchAudioSafe(text, voiceKey) {
   throw new Error(`TTS ဝန်ဆောင်မှု မအောင်မြင်ပါ။ ${errors.join(" | ")}`);
 }
 
-// ==========================================
+// ============================================================
 // AI GENERATION (GEMINI MODELS & GROQ)
-// ==========================================
+// ============================================================
 
 async function callDirectGemini(apiKey, model, prompt, options = {}) {
   if (!apiKey) throw new Error("Gemini API key မရှိပါ");
