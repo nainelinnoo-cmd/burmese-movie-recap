@@ -100,7 +100,6 @@ function initRecapsView() {
     </div>
   `;
 
-  // Volume Event Listeners
   const videoSlider = document.getElementById("vol-video-slider");
   const aiSlider = document.getElementById("vol-ai-slider");
   const videoPlayer = document.getElementById("recap-video-player");
@@ -146,16 +145,21 @@ function updateRecapProgress(percent, title, activeModel = null) {
   }
 }
 
+// အသံကို အများဆုံး ၇၀ စက္ကန့်သာ အတိအကျ ကန့်သတ်ချုံ့ပေးမည့် Function (413 Payload Too Large ကို အပြီးတိုင် ကာကွယ်ခြင်း)
 async function extractAudioOptimized(file) {
   updateRecapProgress(15, "ဗီဒီယိုဒေတာ ဖတ်ယူနေပါသည်...");
   const arrayBuffer = await file.arrayBuffer();
 
-  updateRecapProgress(25, "အသံလှိုင်းများကို 16kHz သို့ ချုံ့နေပါသည်...");
+  updateRecapProgress(25, "အသံလှိုင်းများကို 16kHz သို့ ချုံ့ယူနေပါသည်...");
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
+  // Payload 4.5MB မကျော်စေရန် ဗီဒီယို မည်မျှရှည်စေကာမူ အများဆုံး ၇၀ စက္ကန့်သာ ဖြတ်ယူခြင်း
   const targetSampleRate = 16000;
-  const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
+  const maxSeconds = Math.min(audioBuffer.duration, 70);
+  const targetLength = Math.floor(maxSeconds * targetSampleRate);
+
+  const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
   const source = offlineCtx.createBufferSource();
   source.buffer = audioBuffer;
   source.connect(offlineCtx.destination);
@@ -177,7 +181,7 @@ async function extractAudioOptimized(file) {
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
+  view.setUint16(20, 1, true); // Mono
   view.setUint16(22, 1, true);
   view.setUint32(24, targetSampleRate, true);
   view.setUint32(28, targetSampleRate * 2, true);
