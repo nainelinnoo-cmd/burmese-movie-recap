@@ -109,17 +109,18 @@ async function fetchAudioSafe(text, voice) {
   }
 }
 
-async function runGeminiFast(prompt, isJson = false) {
-  const ACTIVE_MODELS = [
+// ၃။ Model 404 ကင်းစင်သော Multi-Model Fallback System
+async function runGeminiOrGroq(prompt, isJson = false) {
+  // Gemini Models (အဓိက အသုံးပြုရန်)
+  const GEMINI_MODELS = [
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
     "gemini-2.5-flash",
-    "gemini-3.5-flash",
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash"
+    "gemini-3.5-flash"
   ];
 
   if (process.env.GEMINI_API_KEY) {
-    for (const m of ACTIVE_MODELS) {
+    for (const m of GEMINI_MODELS) {
       try {
         const config = isJson ? { responseMimeType: "application/json" } : {};
         const res = await ai.models.generateContent({
@@ -128,45 +129,88 @@ async function runGeminiFast(prompt, isJson = false) {
           config: config
         });
         if (res && res.text) return res.text.trim();
-      } catch (e) {}
+      } catch (e) {
+        console.warn(`Gemini (${m}) failed, trying next...`);
+      }
     }
   }
 
-  // Fallback to Groq
-  const gRes = await groq.chat.completions.create({
-    model: "llama-3.3-70b-versatile",
-    messages: [
-      { role: "system", content: isJson ? "You output strictly valid JSON." : "You are a creative Burmese storyteller." },
-      { role: "user", content: prompt }
-    ],
-    response_format: isJson ? { type: "json_object" } : undefined
-  });
-  return gRes.choices[0]?.message?.content?.trim();
+  // Groq Fallback Models (404 မတက်စေရန် အသေအချာ စစ်ဆေးထားသော မော်ဒယ်များ)
+  const GROQ_MODELS = [
+    "llama-3.1-8b-instant",
+    "llama-3.3-70b-versatile",
+    "llama3-70b-8192",
+    "mixtral-8x7b-32768"
+  ];
+
+  let lastGroqError = null;
+  for (const gm of GROQ_MODELS) {
+    try {
+      const gRes = await groq.chat.completions.create({
+        model: gm,
+        messages: [
+          { role: "system", content: isJson ? "You output strictly valid JSON only." : "You are a creative Burmese storyteller." },
+          { role: "user", content: prompt }
+        ],
+        response_format: isJson ? { type: "json_object" } : undefined
+      });
+      const content = gRes.choices[0]?.message?.content?.trim();
+      if (content) return content;
+    } catch (gErr) {
+      lastGroqError = gErr.message;
+      console.warn(`Groq (${gm}) failed, trying next...`);
+    }
+  }
+
+  throw new Error(`AI Generating Error: ${lastGroqError || "မော်ဒယ်များအားလုံး ချိတ်ဆက်မရပါ"}`);
 }
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
 
   try {
-    const { action, topic, genre, durationMinutes, scriptText, voice } = req.body;
+    const { action, topic, genre, format, durationMinutes, scriptText, voice } = req.body;
 
-    // အဆင့် ၁: ပုံပြင်စာသား သီးသန့် ရေးသားခြင်း
+    // အဆင့် ၁: ပုံပြင်စာသား ရေးသားခြင်း (Series Ep 1 to 6 သို့မဟုတ် Movie)
     if (action === "generate_script") {
       if (!topic) return res.status(400).json({ error: "ခေါင်းစဉ် မပါဝင်ပါ" });
-      const words = (parseInt(durationMinutes) || 1) * 105;
-      const prompt = `Write a captivating, complete story in Burmese about: "${topic}" (${genre}).
-Length: approximately ${words} Burmese words.
-Break thoughts into short sentences using commas.
-Output ONLY the spoken Burmese story text without markdown, titles, or quotes.`;
-      const script = await runGeminiFast(prompt, false);
-      return res.status(200).json({ script });
+      const selectedMins = parseInt(durationMinutes) || 1;
+      const words = selectedMins * 105;
+
+      if (format === "series") {
+        const prompt = `Write a continuous 6-episode story series in Burmese for topic: "${topic}" (${genre}).
+Each episode MUST contain around ${words} Burmese words.
+Output strictly valid JSON:
+{
+  "series_title": "ခေါင်းစဉ်",
+  "episodes": [
+    {"ep": 1, "title": "အပိုင်း ၁ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 2, "title": "အပိုင်း ၂ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 3, "title": "အပိုင်း ၃ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 4, "title": "အပိုင်း ၄ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 5, "title": "အပိုင်း ၅ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."},
+    {"ep": 6, "title": "အပိုင်း ၆ ခေါင်းစဉ်", "text": "ဇာတ်လမ်းစာသား..."}
+  ]
+}`;
+        const jsonStr = await runGeminiOrGroq(prompt, true);
+        return res.status(200).json(JSON.parse(jsonStr));
+      } else {
+        const prompt = `Write a complete movie story script in Burmese about: "${topic}" (${genre}).
+Length: approximately ${words} Burmese words. Use commas and short phrases.
+Output strictly valid JSON:
+{
+  "movie_title": "ခေါင်းစဉ်",
+  "story_text": "ဇာတ်လမ်းစာသား..."
+}`;
+        const jsonStr = await runGeminiOrGroq(prompt, true);
+        return res.status(200).json(JSON.parse(jsonStr));
+      }
     }
 
-    // အဆင့် ၂: စာသားမှ ဓာတ်ပုံဆွဲရန် Prompts ၄ ခု ထုတ်ယူခြင်း
+    // အဆင့် ၂: စာသားမှ Scene Prompts ၄ ခု ထုတ်ယူခြင်း
     if (action === "generate_prompts") {
       if (!scriptText) return res.status(400).json({ error: "စာသား မပါဝင်ပါ" });
-      const prompt = `Based on this story: "${scriptText.substring(0, 400)}", create exactly 4 distinct visual scene descriptions in English for AI image generation.
-Make them cinematic, detailed, masterpiece style.
+      const prompt = `Based on this story snippet: "${scriptText.substring(0, 400)}", write exactly 4 cinematic scene descriptions in English for AI image generation.
 Output strictly valid JSON:
 {
   "prompts": [
@@ -176,7 +220,7 @@ Output strictly valid JSON:
     "cinematic scene 4..."
   ]
 }`;
-      const jsonStr = await runGeminiFast(prompt, true);
+      const jsonStr = await runGeminiOrGroq(prompt, true);
       return res.status(200).json(JSON.parse(jsonStr));
     }
 
