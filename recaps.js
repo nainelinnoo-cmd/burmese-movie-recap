@@ -9,27 +9,44 @@ function initRecapsView() {
         <input type="file" id="recap-video-file" accept="video/*" />
       </div>
 
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+      <!-- Dropdown ၂ ခု လိုင်းညီညာစေရန် ပုံစံတကျ ညှိထားသော Grid -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start;">
         <div>
-          <label>🗣️ အသံသရုပ်ဆောင် / Engine</label>
-          <select id="recap-voice-actor">
-            <option value="edge-thiha">Edge-TTS: သီဟ (ကျား)</option>
-            <option value="edge-nilar">Edge-TTS: နီလာ (မ)</option>
-            <option value="google-my">Google TTS: မြန်မာအသံ</option>
+          <label style="height: 20px; line-height: 20px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">🗣️ အသံသရုပ်ဆောင်</label>
+          <select id="recap-voice-actor" style="height: 44px; margin-bottom: 0;">
+            <optgroup label="Microsoft Edge-TTS (မြန်မာအသံ)">
+              <option value="edge-thiha">သီဟ (ကျား - ပုံမှန်)</option>
+              <option value="edge-thiha-deep">သီဟ (ကျား - အသံဩဇာကြီး)</option>
+              <option value="edge-thiha-fast">သီဟ (ကျား - သွက်လက် Recap)</option>
+              <option value="edge-nilar">နီလာ (မ - သာယာကြည်လင်)</option>
+              <option value="edge-nilar-warm">နီလာ (မ - ညင်သာနွေးထွေး)</option>
+              <option value="edge-nilar-fast">နီလာ (မ - စိတ်လှုပ်ရှားသွက်လက်)</option>
+            </optgroup>
+            <optgroup label="Google TTS (မြန်မာအသံ)">
+              <option value="google-my-standard">Google မြန်မာ (သဘာဝစံ)</option>
+              <option value="google-my-slow">Google မြန်မာ (အေးဆေးရှင်းလင်း)</option>
+              <option value="google-my-fast">Google မြန်မာ (စကားပြောသွက်)</option>
+            </optgroup>
+            <optgroup label="International (နိုင်ငံတကာ)">
+              <option value="edge-en-guy">Guy (US English - ကျား)</option>
+              <option value="edge-en-jenny">Jenny (US English - မ)</option>
+              <option value="edge-th-niwat">Niwat (Thai - ကျား)</option>
+              <option value="edge-th-premwadee">Premwadee (Thai - မ)</option>
+            </optgroup>
           </select>
         </div>
         <div>
-          <label>🎭 Recap စတိုင်</label>
-          <select id="recap-tone">
-            <option value="horror">👻 သရဲ / ထိတ်လန့်ဖွယ် ဇာတ်လမ်း</option>
+          <label style="height: 20px; line-height: 20px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;">🎭 Recap စတိုင်</label>
+          <select id="recap-tone" style="height: 44px; margin-bottom: 0;">
+            <option value="horror">👻 သရဲ / ထိတ်လန့်ဖွယ်</option>
             <option value="funny">😂 ဟာသ / ဆယ်လီစတိုင်</option>
-            <option value="dramatic">🔥 စိတ်လှုပ်ရှားဖွယ် ဇာတ်လမ်း</option>
+            <option value="dramatic">🔥 ရုပ်ရှင်ဇာတ်လမ်းဆန်ဆန်</option>
             <option value="concise">⚡ ရှင်းလင်း အနှစ်ချုပ်</option>
           </select>
         </div>
       </div>
 
-      <!-- Volume Controls (Dual Sliders) -->
+      <!-- Dual Volume Sliders -->
       <div class="card" style="display: flex; flex-direction: column; gap: 10px; background: #131d31;">
         <div>
           <div style="display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 4px;">
@@ -83,7 +100,7 @@ function initRecapsView() {
     </div>
   `;
 
-  // Volume Slider Event Listeners
+  // Volume Event Listeners
   const videoSlider = document.getElementById("vol-video-slider");
   const aiSlider = document.getElementById("vol-ai-slider");
   const videoPlayer = document.getElementById("recap-video-player");
@@ -129,7 +146,6 @@ function updateRecapProgress(percent, title, activeModel = null) {
   }
 }
 
-// 16kHz Mono WAV အဖြစ် သေးငယ်စွာ ချုံ့ထုတ်ပေးမည့် Function
 async function extractAudioOptimized(file) {
   updateRecapProgress(15, "ဗီဒီယိုဒေတာ ဖတ်ယူနေပါသည်...");
   const arrayBuffer = await file.arrayBuffer();
@@ -138,7 +154,6 @@ async function extractAudioOptimized(file) {
   const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
   const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
 
-  // 16000Hz သို့ Resample လုပ်ခြင်း
   const targetSampleRate = 16000;
   const offlineCtx = new OfflineAudioContext(1, audioBuffer.duration * targetSampleRate, targetSampleRate);
   const source = offlineCtx.createBufferSource();
@@ -147,7 +162,7 @@ async function extractAudioOptimized(file) {
   source.start(0);
   const resampledBuffer = await offlineCtx.startRendering();
 
-  updateRecapProgress(35, "Groq ဖတ်နိုင်သော WAV အသံအဖြစ် Encode လုပ်နေပါသည်...");
+  updateRecapProgress(35, "ပေါ့ပါးသော WAV အသံအဖြစ် Encode လုပ်နေပါသည်...");
   const channelData = resampledBuffer.getChannelData(0);
   const length = channelData.length * 2 + 44;
   const outBuffer = new ArrayBuffer(length);
@@ -162,7 +177,7 @@ async function extractAudioOptimized(file) {
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // Mono
+  view.setUint16(20, 1, true);
   view.setUint16(22, 1, true);
   view.setUint32(24, targetSampleRate, true);
   view.setUint32(28, targetSampleRate * 2, true);
@@ -220,7 +235,7 @@ async function handleGenerateRecap() {
     }, 2000);
 
     setTimeout(() => {
-      updateRecapProgress(85, "မြန်မာ Neural အသံဖိုင် ဖန်တီးနေပါသည်...", "tts");
+      updateRecapProgress(85, "ရွေးချယ်ထားသော အသံဖိုင် ဖန်တီးနေပါသည်...", "tts");
     }, 4500);
 
     const response = await fetch("/api/generate-recap", {
@@ -243,7 +258,6 @@ async function handleGenerateRecap() {
     resultBox.style.display = "flex";
     scriptText.value = data.script;
 
-    // အသံနှင့် ဗီဒီယို တိုက်ဆိုင်ချိန်ညှိခြင်း
     const audioBlob = new Blob([Uint8Array.from(atob(data.voiceoverBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
     if (currentRecapAudio) currentRecapAudio.pause();
     currentRecapAudio = new Audio(URL.createObjectURL(audioBlob));
