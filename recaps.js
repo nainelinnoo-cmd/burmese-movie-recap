@@ -12,7 +12,17 @@ let srtBgStyle = "rgba(0,0,0,0.75)";
 let titleFontSize = 24;
 let watermarkImg = null;
 
+// Performance / lifecycle state
+let currentVideoObjectUrl = null;
+let currentBgmObjectUrl = null;
+let currentRecapAudioUrl = null;
+let exportAudioGraph = null;
+let activeExport = false;
+let lastSrtCueIndex = -1;
+
 function initRecapsView() {
+  if (window.__recapsViewInitialized) return;
+  window.__recapsViewInitialized = true;
   const container = document.getElementById("view-recaps");
   if (!container) return;
 
@@ -305,15 +315,19 @@ function initRecapsView() {
 }
 
 function handleVideoFileSelect(event) {
-  const file = event.target.files[0];
+  const file = event.target.files?.[0];
   if (!file) return;
   const videoPlayer = document.getElementById("recap-video-player");
   const wrapper = document.getElementById("video-wrapper");
+  if (!videoPlayer || !wrapper) return;
 
-  videoPlayer.src = URL.createObjectURL(file);
+  if (currentVideoObjectUrl) URL.revokeObjectURL(currentVideoObjectUrl);
+  currentVideoObjectUrl = URL.createObjectURL(file);
+  videoPlayer.src = currentVideoObjectUrl;
+  videoPlayer.load();
   videoPlayer.onloadedmetadata = () => {
     const aspect = (videoPlayer.videoWidth || 16) / (videoPlayer.videoHeight || 9);
-    wrapper.style.aspectRatio = `${aspect}`;
+    wrapper.style.aspectRatio = String(aspect);
   };
 }
 
@@ -352,21 +366,29 @@ function setupAudioMixerListeners() {
 }
 
 function handleBgmFileSelect(e) {
-  if (e.target.files && e.target.files[0]) {
-    const bgmUrl = URL.createObjectURL(e.target.files[0]);
-    if (currentBgmAudio) currentBgmAudio.pause();
-    currentBgmAudio = new Audio(bgmUrl);
-    currentBgmAudio.loop = true;
-    currentBgmAudio.volume = document.getElementById("vol-bgm-slider").value / 100;
-    document.getElementById("btn-remove-bgm").style.display = "block";
-  }
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  if (currentBgmAudio) currentBgmAudio.pause();
+  if (currentBgmObjectUrl) URL.revokeObjectURL(currentBgmObjectUrl);
+
+  currentBgmObjectUrl = URL.createObjectURL(file);
+  currentBgmAudio = new Audio(currentBgmObjectUrl);
+  currentBgmAudio.preload = "auto";
+  currentBgmAudio.loop = true;
+  currentBgmAudio.volume = Number(document.getElementById("vol-bgm-slider")?.value || 35) / 100;
+  document.getElementById("btn-remove-bgm").style.display = "block";
 }
 
 function removeBgmAudio() {
   if (currentBgmAudio) {
     currentBgmAudio.pause();
-    currentBgmAudio = null;
+    currentBgmAudio.removeAttribute("src");
+    currentBgmAudio.load();
   }
+  if (currentBgmObjectUrl) URL.revokeObjectURL(currentBgmObjectUrl);
+  currentBgmAudio = null;
+  currentBgmObjectUrl = null;
   document.getElementById("recap-bgm-file").value = "";
   document.getElementById("btn-remove-bgm").style.display = "none";
 }
@@ -431,124 +453,93 @@ function changeTitleFontSize(val) {
 function setupTouchDragOverlay(elementId) {
   const el = document.getElementById(elementId);
   const wrapper = document.getElementById("video-wrapper");
+  if (!el || !wrapper) return;
 
-  let isDragging = false;
-  let startX, startY, origX, origY;
+  let dragging = false;
+  let startX = 0, startY = 0, origX = 0, origY = 0;
 
-  function onStart(e) {
-    if (e.target.id && e.target.id.includes("resize-handle")) return;
-    isDragging = true;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    startX = clientX;
-    startY = clientY;
-    origX = el.offsetLeft;
-    origY = el.offsetTop;
+  const onDown = (e) => {
+    if (e.target.closest?.("[id$='resize-handle']")) return;
+    dragging = true;
+    startX = e.clientX; startY = e.clientY;
+    origX = el.offsetLeft; origY = el.offsetTop;
     el.style.transform = "none";
-  }
-
-  function onMove(e) {
-    if (!isDragging) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-    let newX = origX + (clientX - startX);
-    let newY = origY + (clientY - startY);
-
-    newX = Math.max(0, Math.min(newX, wrapper.clientWidth - el.clientWidth));
-    newY = Math.max(0, Math.min(newY, wrapper.clientHeight - el.clientHeight));
-
-    el.style.left = `${newX}px`;
-    el.style.top = `${newY}px`;
-    el.style.bottom = "auto";
+    el.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!dragging) return;
+    const maxX = Math.max(0, wrapper.clientWidth - el.clientWidth);
+    const maxY = Math.max(0, wrapper.clientHeight - el.clientHeight);
+    el.style.left = `${Math.max(0, Math.min(maxX, origX + e.clientX - startX))}px`;
+    el.style.top = `${Math.max(0, Math.min(maxY, origY + e.clientY - startY))}px`;
     el.style.right = "auto";
-  }
+    el.style.bottom = "auto";
+  };
+  const stop = () => { dragging = false; };
 
-  function onEnd() { isDragging = false; }
-
-  el.addEventListener("touchstart", onStart, { passive: false });
-  window.addEventListener("touchmove", onMove, { passive: false });
-  window.addEventListener("touchend", onEnd);
-  el.addEventListener("mousedown", onStart);
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onEnd);
+  el.style.touchAction = "none";
+  el.addEventListener("pointerdown", onDown);
+  el.addEventListener("pointermove", onMove);
+  el.addEventListener("pointerup", stop);
+  el.addEventListener("pointercancel", stop);
 }
 
 function setupSubtitleTouchResize() {
   const handle = document.getElementById("sub-resize-handle");
   const slider = document.getElementById("srt-size-slider");
   const sizeVal = document.getElementById("srt-font-size-val");
+  if (!handle) return;
 
-  let isResizing = false;
-  let startX, startSize;
-
-  function onStart(e) {
+  let resizing = false, startX = 0, startSize = 18;
+  const onDown = (e) => {
     e.stopPropagation();
-    isResizing = true;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    startX = clientX;
-    startSize = srtFontSize;
-  }
-
-  function onMove(e) {
-    if (!isResizing) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const deltaX = clientX - startX;
-    let newSize = Math.max(10, Math.min(100, Math.round(startSize + deltaX * 0.35)));
+    resizing = true; startX = e.clientX; startSize = Number(srtFontSize);
+    handle.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!resizing) return;
+    const newSize = Math.max(10, Math.min(100, Math.round(startSize + (e.clientX - startX) * 0.35)));
     srtFontSize = newSize;
     if (slider) slider.value = newSize;
     if (sizeVal) sizeVal.innerText = `${newSize}px`;
     applySrtStyles();
-  }
+  };
+  const stop = () => { resizing = false; };
 
-  function onEnd() { isResizing = false; }
-
-  handle.addEventListener("touchstart", onStart, { passive: false });
-  window.addEventListener("touchmove", onMove, { passive: false });
-  window.addEventListener("touchend", onEnd);
-  handle.addEventListener("mousedown", onStart);
-  window.addEventListener("mousemove", onMove);
-  window.addEventListener("mouseup", onEnd);
+  handle.style.touchAction = "none";
+  handle.addEventListener("pointerdown", onDown);
+  handle.addEventListener("pointermove", onMove);
+  handle.addEventListener("pointerup", stop);
+  handle.addEventListener("pointercancel", stop);
 }
 
 function setupTouchResize(targetId, handleId) {
   const target = document.getElementById(targetId);
   const handle = document.getElementById(handleId);
+  if (!target || !handle) return;
 
-  let isResizing = false;
-  let startX, startY, startW, startH;
-
-  function onResizeStart(e) {
+  let resizing = false, startX = 0, startY = 0, startW = 0, startH = 0;
+  const onDown = (e) => {
     e.stopPropagation();
-    isResizing = true;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-    startX = clientX;
-    startY = clientY;
-    startW = target.clientWidth;
-    startH = target.clientHeight;
-  }
+    resizing = true; startX = e.clientX; startY = e.clientY;
+    startW = target.clientWidth; startH = target.clientHeight;
+    handle.setPointerCapture?.(e.pointerId);
+    e.preventDefault();
+  };
+  const onMove = (e) => {
+    if (!resizing) return;
+    target.style.width = `${Math.max(30, startW + e.clientX - startX)}px`;
+    target.style.height = `${Math.max(20, startH + e.clientY - startY)}px`;
+  };
+  const stop = () => { resizing = false; };
 
-  function onResizeMove(e) {
-    if (!isResizing) return;
-    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-
-    const newW = Math.max(30, startW + (clientX - startX));
-    const newH = Math.max(20, startH + (clientY - startY));
-
-    target.style.width = `${newW}px`;
-    target.style.height = `${newH}px`;
-  }
-
-  function onResizeEnd() { isResizing = false; }
-
-  handle.addEventListener("touchstart", onResizeStart, { passive: false });
-  window.addEventListener("touchmove", onResizeMove, { passive: false });
-  window.addEventListener("touchend", onResizeEnd);
-  handle.addEventListener("mousedown", onResizeStart);
-  window.addEventListener("mousemove", onResizeMove);
-  window.addEventListener("mouseup", onResizeEnd);
+  handle.style.touchAction = "none";
+  handle.addEventListener("pointerdown", onDown);
+  handle.addEventListener("pointermove", onMove);
+  handle.addEventListener("pointerup", stop);
+  handle.addEventListener("pointercancel", stop);
 }
 
 function toggleBlurBox() {
@@ -689,141 +680,299 @@ function generateAccurateSrt(scriptText, totalDuration) {
 }
 
 function parseSrtCues(srtText) {
-  if (!srtText) return [];
-  const blocks = srtText.trim().split(/\n\s*\n/);
-  return blocks.map(block => {
-    const lines = block.split("\n");
-    if (lines.length >= 3) {
-      const timeParts = lines[1].split(" --> ");
-      const parseSeconds = (t) => {
-        const [h, m, s] = t.split(":");
-        const [sec, ms] = s.split(",");
-        return parseInt(h) * 3600 + parseInt(m) * 60 + parseInt(sec) + parseInt(ms) / 1000;
-      };
-      return {
-        start: parseSeconds(timeParts[0]),
-        end: parseSeconds(timeParts[1]),
-        text: lines.slice(2).join(" ")
-      };
-    }
-    return null;
-  }).filter(Boolean);
+  if (!srtText?.trim()) return [];
+
+  const parseTime = (raw) => {
+    const m = String(raw).trim().match(/(\d+):(\d{2}):(\d{2})[,.](\d{3})/);
+    return m ? Number(m[1]) * 3600 + Number(m[2]) * 60 + Number(m[3]) + Number(m[4]) / 1000 : NaN;
+  };
+
+  return srtText.trim().split(/\n\s*\n/).map(block => {
+    const lines = block.split(/\r?\n/);
+    const timeIndex = lines.findIndex(line => line.includes("-->"));
+    if (timeIndex < 0) return null;
+    const [a, b] = lines[timeIndex].split(/\s+-->\s+/);
+    const start = parseTime(a), end = parseTime(b);
+    const text = lines.slice(timeIndex + 1).join(" ").trim();
+    return Number.isFinite(start) && Number.isFinite(end) && text ? { start, end, text } : null;
+  }).filter(Boolean).sort((a, b) => a.start - b.start);
 }
 
-// ပေါ့ပါးသော Snapshots ၃ ပုံ ဖြတ်ယူခြင်း (Upload အမြန်ဆုံး ပြီးစေရန် အရွယ်အစား ချုံ့ထားသည်)
+function getCueAtTime(time) {
+  if (!recapSrtCues.length) return null;
+
+  if (lastSrtCueIndex >= 0) {
+    const cue = recapSrtCues[lastSrtCueIndex];
+    if (cue && time >= cue.start && time <= cue.end) return cue;
+  }
+
+  let lo = 0, hi = recapSrtCues.length - 1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const cue = recapSrtCues[mid];
+    if (time < cue.start) hi = mid - 1;
+    else if (time > cue.end) lo = mid + 1;
+    else {
+      lastSrtCueIndex = mid;
+      return cue;
+    }
+  }
+  lastSrtCueIndex = Math.max(0, Math.min(recapSrtCues.length - 1, lo));
+  return null;
+}
+
+// Lightweight scene snapshots + compressed audio for a much smaller request payload.
 async function extractVideoKeyframes(file) {
   return new Promise((resolve) => {
     const video = document.createElement("video");
-    video.preload = "auto";
+    const url = URL.createObjectURL(file);
+    const frames = [];
+    video.preload = "metadata";
     video.muted = true;
     video.playsInline = true;
-    const url = URL.createObjectURL(file);
-    video.src = url;
 
+    const cleanup = () => {
+      URL.revokeObjectURL(url);
+      video.removeAttribute("src");
+      video.load();
+    };
+
+    video.onerror = () => { cleanup(); resolve([]); };
     video.onloadedmetadata = async () => {
-      const duration = video.duration || 10;
-      const timestamps = [duration * 0.2, duration * 0.5, duration * 0.8];
+      try {
+        const duration = Number.isFinite(video.duration) ? video.duration : 10;
+        // Two well-spaced frames are enough for scene grounding and cut image upload roughly 1/3.
+        const timestamps = [0.30, 0.70].map(r => Math.min(Math.max(0.1, duration * r), Math.max(0.1, duration - 0.05)));
+        const width = 200;
+        const height = Math.max(1, Math.round((video.videoHeight / Math.max(1, video.videoWidth)) * width));
+        const canvas = document.createElement("canvas");
+        canvas.width = width; canvas.height = height;
+        const ctx = canvas.getContext("2d", { alpha: false });
 
-      const canvas = document.createElement("canvas");
-      const width = 240;
-      const height = Math.round((video.videoHeight / (video.videoWidth || 1)) * width) || 135;
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext("2d");
-
-      const frames = [];
-
-      for (const t of timestamps) {
-        await new Promise((res) => {
-          let done = false;
-          const timer = setTimeout(() => {
-            if (!done) { done = true; res(); }
-          }, 600);
-
-          video.currentTime = t;
-          video.onseeked = () => {
-            if (!done) {
-              done = true;
+        for (const t of [...new Set(timestamps)]) {
+          await new Promise(done => {
+            let finished = false;
+            const finish = () => {
+              if (finished) return;
+              finished = true;
               clearTimeout(timer);
+              done();
+            };
+            const onSeeked = () => {
               try {
                 ctx.drawImage(video, 0, 0, width, height);
-                const dataUrl = canvas.toDataURL("image/jpeg", 0.35);
-                const base64 = dataUrl.split(",")[1];
+                const base64 = canvas.toDataURL("image/jpeg", 0.28).split(",", 2)[1];
                 if (base64) frames.push(base64);
-              } catch (e) {}
-              res();
-            }
-          };
-        });
+              } catch (_) {}
+              finish();
+            };
+            const timer = setTimeout(finish, 700);
+            video.addEventListener("seeked", onSeeked, { once: true });
+            video.currentTime = t;
+          });
+        }
+      } finally {
+        cleanup();
+        resolve(frames);
       }
-
-      URL.revokeObjectURL(url);
-      resolve(frames);
     };
-
-    video.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve([]);
-    };
+    video.src = url;
   });
 }
 
-async function extractAudioOptimized(file) {
-  const arrayBuffer = await file.arrayBuffer();
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer);
-
-  const targetSampleRate = 16000;
-  const maxSeconds = Math.min(audioBuffer.duration, 60);
-  const targetLength = Math.floor(maxSeconds * targetSampleRate);
-
-  const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
-  const source = offlineCtx.createBufferSource();
-  source.buffer = audioBuffer;
-  source.connect(offlineCtx.destination);
-  source.start(0);
-  const resampledBuffer = await offlineCtx.startRendering();
-
-  const channelData = resampledBuffer.getChannelData(0);
-  const length = channelData.length * 2 + 44;
-  const outBuffer = new ArrayBuffer(length);
-  const view = new DataView(outBuffer);
-
-  function writeString(pos, str) {
-    for (let i = 0; i < str.length; i++) view.setUint8(pos + i, str.charCodeAt(i));
-  }
-  writeString(0, "RIFF");
-  view.setUint32(4, length - 8, true);
-  writeString(8, "WAVE");
-  writeString(12, "fmt ");
-  view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true);
-  view.setUint16(22, 1, true);
-  view.setUint32(24, targetSampleRate, true);
-  view.setUint32(28, targetSampleRate * 2, true);
-  view.setUint16(32, 2, true);
-  view.setUint16(34, 16, true);
-  writeString(36, "data");
-  view.setUint32(40, length - 44, true);
-
-  let offset = 44;
-  for (let i = 0; i < channelData.length; i++) {
-    let sample = Math.max(-1, Math.min(1, channelData[i]));
-    view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
-    offset += 2;
-  }
-
+function arrayBufferToBase64(buffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
   let binary = "";
-  const bytes = new Uint8Array(outBuffer);
-  for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, Math.min(i + chunkSize, bytes.length)));
+  }
+  return btoa(binary);
+}
 
-  return { audioBase64: btoa(binary), duration: audioBuffer.duration };
+// Prefer Opus/WebM: a 30-60s clip is usually tens/hundreds of KB instead of ~1-2MB WAV.
+// Falls back to the WAV path for browsers without MediaRecorder/captureStream.
+async function extractAudioCompressed(file) {
+  const video = document.createElement("video");
+  const url = URL.createObjectURL(file);
+  video.preload = "auto";
+  video.muted = true;
+  video.playsInline = true;
+  video.src = url;
+
+  try {
+    await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error("Audio metadata timeout")), 8000);
+      video.onloadedmetadata = () => { clearTimeout(timer); resolve(); };
+      video.onerror = () => { clearTimeout(timer); reject(new Error("Video audio track မဖတ်နိုင်ပါ")); };
+    });
+
+    if (!video.captureStream || !window.MediaRecorder) throw new Error("compressed audio unsupported");
+    const sourceStream = video.captureStream();
+    const audioTracks = sourceStream.getAudioTracks();
+    if (!audioTracks.length) throw new Error("No audio track");
+
+    const audioStream = new MediaStream(audioTracks);
+    const mimeCandidates = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/mp4"
+    ];
+    const mimeType = mimeCandidates.find(type => MediaRecorder.isTypeSupported(type));
+    if (!mimeType) throw new Error("No supported audio recorder");
+
+    const chunks = [];
+    const recorder = new MediaRecorder(audioStream, {
+      mimeType,
+      audioBitsPerSecond: 32000
+    });
+
+    const done = new Promise((resolve, reject) => {
+      recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
+      recorder.onerror = () => reject(recorder.error || new Error("Audio recording failed"));
+      recorder.onstop = async () => {
+        try {
+          const blob = new Blob(chunks, { type: mimeType });
+          const buffer = await blob.arrayBuffer();
+          resolve({ audioBase64: arrayBufferToBase64(buffer), duration: video.duration, audioMimeType: mimeType });
+        } catch (e) { reject(e); }
+      };
+    });
+
+    recorder.start(1000);
+    video.currentTime = 0;
+    await video.play();
+    await new Promise(resolve => {
+      const stop = () => { video.removeEventListener("ended", stop); resolve(); };
+      video.addEventListener("ended", stop, { once: true });
+      setTimeout(stop, Math.min(60000, Math.max(1000, video.duration * 1000 + 500)));
+    });
+    if (recorder.state !== "inactive") recorder.stop();
+    const result = await done;
+    return result;
+  } finally {
+    video.pause();
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function extractAudioOptimized(file) {
+  try {
+    return await extractAudioCompressed(file);
+  } catch (_) {
+    // Compatibility fallback: the existing mono 16k WAV path.
+  }
+
+  const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+  if (!AudioContextCtor) throw new Error("Browser မှာ AudioContext မထောက်ပံ့ပါ");
+
+  const arrayBuffer = await file.arrayBuffer();
+  const audioCtx = new AudioContextCtor();
+  try {
+    const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    const targetSampleRate = 16000;
+    const maxSeconds = Math.min(audioBuffer.duration, 60);
+    const targetLength = Math.max(1, Math.floor(maxSeconds * targetSampleRate));
+    const offlineCtx = new OfflineAudioContext(1, targetLength, targetSampleRate);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0, 0, maxSeconds);
+    const resampled = await offlineCtx.startRendering();
+    const channelData = resampled.getChannelData(0);
+    const outBuffer = new ArrayBuffer(44 + channelData.length * 2);
+    const view = new DataView(outBuffer);
+    const writeString = (pos, str) => { for (let i = 0; i < str.length; i++) view.setUint8(pos + i, str.charCodeAt(i)); };
+    writeString(0, "RIFF"); view.setUint32(4, outBuffer.byteLength - 8, true); writeString(8, "WAVE"); writeString(12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, targetSampleRate, true);
+    view.setUint32(28, targetSampleRate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); writeString(36, "data");
+    view.setUint32(40, channelData.length * 2, true);
+    for (let i = 0, offset = 44; i < channelData.length; i++, offset += 2) {
+      const sample = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+    }
+    return { audioBase64: arrayBufferToBase64(outBuffer), duration: audioBuffer.duration, audioMimeType: "audio/wav" };
+  } finally {
+    await audioCtx.close().catch(() => {});
+  }
+}
+
+async function fetchJson(url, options, timeoutMs = 60000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal });
+    const raw = await response.text();
+    let data;
+    try { data = JSON.parse(raw); }
+    catch (_) { throw new Error(`ဆာဗာမှ JSON မဟုတ်သော တုံ့ပြန်မှု ရရှိပါသည်: ${raw.slice(0, 120)}`); }
+    if (!response.ok) throw new Error(data.error || `Request failed (${response.status})`);
+    return data;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("ဆာဗာတုံ့ပြန်ချိန် ကြာလွန်းပါသည်။");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+
+async function streamRecapGeneration(payload) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 90000);
+  try {
+    const response = await fetch("/api/generate-recap", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+      signal: controller.signal
+    });
+    if (!response.ok) {
+      const raw = await response.text();
+      let data = null; try { data = JSON.parse(raw); } catch (_) {}
+      throw new Error(data?.error || raw.slice(0, 160) || `Request failed (${response.status})`);
+    }
+
+    // NDJSON stream: {type:"stage",stage:"..."}\n ... {type:"result",script:"..."}\n
+    if (!response.body) return await response.json();
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let result = null;
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = JSON.parse(line);
+        if (event.type === "stage") payload.onStage?.(event.stage);
+        if (event.type === "result") result = event;
+        if (event.type === "error") throw new Error(event.error || "Recap generation failed");
+      }
+      if (done) break;
+    }
+    if (buffer.trim()) {
+      const event = JSON.parse(buffer);
+      if (event.type === "result") result = event;
+      if (event.type === "error") throw new Error(event.error || "Recap generation failed");
+    }
+    if (!result?.script) throw new Error("AI မှ Recap စာသား မရရှိပါ");
+    return result;
+  } catch (err) {
+    if (err.name === "AbortError") throw new Error("Recap ဆာဗာတုံ့ပြန်ချိန် ကြာလွန်းပါသည်။");
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 async function handleGenerateRecap() {
-  const fileInput = document.getElementById("recap-video-file");
-  const voice = document.getElementById("recap-voice-actor").value;
-  const tone = document.getElementById("recap-tone").value;
+  const file = document.getElementById("recap-video-file")?.files?.[0];
+  const voice = document.getElementById("recap-voice-actor")?.value;
+  const tone = document.getElementById("recap-tone")?.value;
   const errorBox = document.getElementById("recap-error-box");
   const resultBox = document.getElementById("recap-result-box");
   const scriptText = document.getElementById("recap-script-text");
@@ -835,141 +984,137 @@ async function handleGenerateRecap() {
   const pPercent = document.getElementById("recap-step-percent");
   const pTitle = document.getElementById("recap-step-title");
 
-  if (!fileInput.files || fileInput.files.length === 0) return alert("ဗီဒီယိုဖိုင် ရွေးချယ်ပေးပါ");
+  if (!file) return alert("ဗီဒီယိုဖိုင် ရွေးချယ်ပေးပါ");
 
-  const file = fileInput.files[0];
   errorBox.style.display = "none";
   resultBox.style.display = "none";
   generateBtn.disabled = true;
   generateBtn.style.opacity = "0.5";
   pContainer.style.display = "block";
+  lastSrtCueIndex = -1;
 
   try {
-    pTitle.innerText = "ဗီဒီယိုအသံနှင့် မြင်ကွင်း Snapshots များ ဖတ်ယူနေပါသည်...";
-    pPercent.innerText = "30%";
-    pBar.style.width = "30%";
+    pTitle.innerText = "အသံနှင့် Scene Snapshots ဖတ်နေပါသည်...";
+    pPercent.innerText = "25%";
+    pBar.style.width = "25%";
 
-    const [{ audioBase64, duration }, frames] = await Promise.all([
+    const [{ audioBase64, duration, audioMimeType }, frames] = await Promise.all([
       extractAudioOptimized(file),
       extractVideoKeyframes(file)
     ]);
 
-    const actualVideoDuration = Math.round(videoPlayer.duration || duration || 30);
+    const actualVideoDuration = Math.max(1, Math.round(videoPlayer.duration || duration || 30));
 
-    pTitle.innerText = "Gemini Vision က ဗီဒီယိုအပြည့် Recap ရေးနေပါသည်...";
-    pPercent.innerText = "60%";
-    pBar.style.width = "60%";
+    pTitle.innerText = "AI က Recap စာသားရေးနေပါသည်...";
+    pPercent.innerText = "55%";
+    pBar.style.width = "55%";
 
-    const scriptRes = await fetch("/api/generate-recap", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        audioBase64, 
-        frames, 
-        tone, 
-        videoDuration: actualVideoDuration 
-      }),
+    const scriptData = await streamRecapGeneration({
+      audioBase64,
+      audioMimeType: audioMimeType || "audio/webm",
+      frames,
+      tone,
+      videoDuration: actualVideoDuration,
+      onStage: (stage) => {
+        if (stage === "transcribing") {
+          pTitle.innerText = "အသံကို မြန်မြန် Transcribe လုပ်နေပါသည်...";
+          pPercent.innerText = "45%"; pBar.style.width = "45%";
+        } else if (stage === "writing") {
+          pTitle.innerText = "AI က Recap စာသားရေးနေပါသည်...";
+          pPercent.innerText = "70%"; pBar.style.width = "70%";
+        }
+      }
     });
 
-    // Safe JSON Parsing (Vercel Timeout တက်ပါက တိုက်ရိုက်ဖမ်းယူသည်)
-    const scriptRawText = await scriptRes.text();
-    let scriptData;
-    try {
-      scriptData = JSON.parse(scriptRawText);
-    } catch (e) {
-      if (scriptRawText.includes("TIMEOUT")) {
-        throw new Error("ဆာဗာ ကြာချိန် ၁၀ စက္ကန့် ကျော်လွန်သွားပါသည် (Timeout)။ ဗီဒီယိုဖိုင်ကို ပြန်တင်ပြီး စမ်းသပ်ပေးပါခင်ဗျာ။");
-      }
-      throw new Error(`ဆာဗာမှ မှားယွင်းသော တုံ့ပြန်မှု ရရှိပါသည်: ${scriptRawText.substring(0, 100)}`);
-    }
-
-    if (!scriptRes.ok) throw new Error(scriptData.error || "Recap စာသား ရေးသားမှု မအောင်မြင်ပါ");
-
-    const recapScript = scriptData.script;
+    const recapScript = String(scriptData.script || "").trim();
+    if (!recapScript) throw new Error("AI မှ Recap စာသား မရရှိပါ");
     scriptText.value = recapScript;
 
-    pTitle.innerText = "ရွေးချယ်ထားသော အသံဖိုင် ဖန်တီးနေပါသည်...";
-    pPercent.innerText = "85%";
-    pBar.style.width = "85%";
+    pTitle.innerText = "ရွေးချယ်ထားသော အသံ ဖန်တီးနေပါသည်...";
+    pPercent.innerText = "80%";
+    pBar.style.width = "80%";
 
-    const audioRes = await fetch("/api/generate-story", {
+    const audioData = await fetchJson("/api/generate-story", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        fetchAudioOnly: true,
-        scriptText: recapScript,
-        voice: voice
-      })
+      body: JSON.stringify({ fetchAudioOnly: true, scriptText: recapScript, voice })
     });
 
-    const audioRawText = await audioRes.text();
-    let audioData;
-    try {
-      audioData = JSON.parse(audioRawText);
-    } catch (e) {
-      throw new Error(`အသံဆာဗာ မှားယွင်းနေပါသည်: ${audioRawText.substring(0, 100)}`);
-    }
+    if (!audioData.audioBase64) throw new Error("အသံဖိုင်ဒေတာ မရရှိပါ");
 
-    if (!audioRes.ok) throw new Error(audioData.error || "အသံဖိုင် ထုတ်ယူမှု မအောင်မြင်ပါ");
+    const audioBytes = Uint8Array.from(atob(audioData.audioBase64), c => c.charCodeAt(0));
+    const audioBlob = new Blob([audioBytes], { type: "audio/mpeg" });
+
+    if (currentRecapAudio) currentRecapAudio.pause();
+    if (currentRecapAudioUrl) URL.revokeObjectURL(currentRecapAudioUrl);
+    currentRecapAudioUrl = URL.createObjectURL(audioBlob);
+    currentRecapAudio = new Audio(currentRecapAudioUrl);
+    currentRecapAudio.preload = "auto";
+    currentRecapAudio.volume = Number(document.getElementById("vol-ai-slider")?.value || 100) / 100;
+
+    if (!currentVideoObjectUrl) currentVideoObjectUrl = URL.createObjectURL(file);
+    videoPlayer.src = currentVideoObjectUrl;
+    videoPlayer.volume = Number(document.getElementById("vol-video-slider")?.value || 0) / 100;
+    videoPlayer.load();
+
+    const applySrt = () => {
+      const accurateSrt = generateAccurateSrt(recapScript, actualVideoDuration);
+      window.currentSrtRaw = accurateSrt;
+      document.getElementById("srt-edit-textarea").value = accurateSrt;
+      recapSrtCues = parseSrtCues(accurateSrt);
+      lastSrtCueIndex = -1;
+    };
+
+    if (videoPlayer.readyState >= 1) applySrt();
+    else videoPlayer.addEventListener("loadedmetadata", applySrt, { once: true });
+
+    videoPlayer.ontimeupdate = () => {
+      const curr = videoPlayer.currentTime;
+      if (isSrtVisible) {
+        const cue = getCueAtTime(curr);
+        if (textSpan) textSpan.innerText = cue?.text || "";
+      }
+
+      if (currentRecapAudio && Number.isFinite(currentRecapAudio.duration)) {
+        const target = Math.min(curr, Math.max(0, currentRecapAudio.duration - 0.05));
+        if (Math.abs(currentRecapAudio.currentTime - target) > 0.25) currentRecapAudio.currentTime = target;
+      }
+
+      if (currentBgmAudio && Number.isFinite(currentBgmAudio.duration) && currentBgmAudio.duration > 0) {
+        const target = curr % currentBgmAudio.duration;
+        if (Math.abs(currentBgmAudio.currentTime - target) > 0.4) currentBgmAudio.currentTime = target;
+      }
+    };
+
+    videoPlayer.onplay = () => {
+      currentRecapAudio?.play().catch(() => {});
+      currentBgmAudio?.play().catch(() => {});
+    };
+    videoPlayer.onpause = () => {
+      currentRecapAudio?.pause();
+      currentBgmAudio?.pause();
+    };
+    videoPlayer.onseeking = () => {
+      if (currentRecapAudio && Number.isFinite(currentRecapAudio.duration)) {
+        currentRecapAudio.currentTime = Math.min(videoPlayer.currentTime, Math.max(0, currentRecapAudio.duration - 0.05));
+      }
+      if (currentBgmAudio && Number.isFinite(currentBgmAudio.duration) && currentBgmAudio.duration > 0) {
+        currentBgmAudio.currentTime = videoPlayer.currentTime % currentBgmAudio.duration;
+      }
+    };
+    videoPlayer.onended = () => {
+      currentRecapAudio?.pause();
+      currentBgmAudio?.pause();
+    };
 
     pPercent.innerText = "100%";
     pBar.style.width = "100%";
     pTitle.innerText = "အားလုံး အောင်မြင်စွာ ဖန်တီးပြီးပါပြီ!";
     resultBox.style.display = "flex";
-
-    const audioBlob = new Blob([Uint8Array.from(atob(audioData.audioBase64), c => c.charCodeAt(0))], { type: "audio/mp3" });
-    if (currentRecapAudio) currentRecapAudio.pause();
-    currentRecapAudio = new Audio(URL.createObjectURL(audioBlob));
-
-    videoPlayer.src = URL.createObjectURL(file);
-    videoPlayer.volume = document.getElementById("vol-video-slider").value / 100;
-    currentRecapAudio.volume = document.getElementById("vol-ai-slider").value / 100;
-
-    currentRecapAudio.onloadedmetadata = () => {
-      const accurateSrt = generateAccurateSrt(recapScript, actualVideoDuration);
-      window.currentSrtRaw = accurateSrt;
-      document.getElementById("srt-edit-textarea").value = accurateSrt;
-      recapSrtCues = parseSrtCues(accurateSrt);
-    };
-
-    videoPlayer.ontimeupdate = () => {
-      if (!isSrtVisible) return;
-      const curr = videoPlayer.currentTime;
-      const cue = recapSrtCues.find(c => curr >= c.start && curr <= c.end);
-      if (textSpan) textSpan.innerText = cue ? cue.text : "";
-
-      if (Math.abs(videoPlayer.currentTime - currentRecapAudio.currentTime) > 0.3) {
-        currentRecapAudio.currentTime = videoPlayer.currentTime;
-      }
-      if (currentBgmAudio && Math.abs(videoPlayer.currentTime - currentBgmAudio.currentTime) > 0.4) {
-        currentBgmAudio.currentTime = videoPlayer.currentTime % currentBgmAudio.duration;
-      }
-    };
-
-    videoPlayer.onplay = () => {
-      currentRecapAudio.play();
-      if (currentBgmAudio) currentBgmAudio.play();
-    };
-
-    videoPlayer.onpause = () => {
-      currentRecapAudio.pause();
-      if (currentBgmAudio) currentBgmAudio.pause();
-    };
-
-    videoPlayer.onseeking = () => {
-      currentRecapAudio.currentTime = videoPlayer.currentTime;
-      if (currentBgmAudio) currentBgmAudio.currentTime = videoPlayer.currentTime % currentBgmAudio.duration;
-    };
-
-    videoPlayer.onended = () => {
-      currentRecapAudio.pause();
-      if (currentBgmAudio) currentBgmAudio.pause();
-    };
-
   } catch (err) {
     pContainer.style.display = "none";
     errorBox.style.display = "block";
-    errorBox.innerHTML = `<b>❌ Error:</b> ${err.message}`;
+    errorBox.innerHTML = `<b>❌ Error:</b> ${String(err.message || err).replace(/[<>]/g, "")}`;
   } finally {
     generateBtn.disabled = false;
     generateBtn.style.opacity = "1";
@@ -989,193 +1134,220 @@ async function exportHardcodedVideo() {
   const exportPercent = document.getElementById("export-percent-val");
   const exportTitle = document.getElementById("export-status-title");
 
-  if (!video.src) return alert("ဗီဒီယို မရှိသေးပါ");
+  if (!video.src || !video.videoWidth) return alert("ဗီဒီယို မရှိသေးပါ");
+  if (activeExport) return;
+  activeExport = true;
 
   exportBtn.disabled = true;
   exportBtn.style.opacity = "0.5";
   exportBox.style.display = "block";
   exportTitle.innerText = "Render ပြုလုပ်နေပါသည်...";
+  exportBar.style.width = "0%";
+  exportPercent.innerText = "0%";
 
   const canvas = document.createElement("canvas");
-  canvas.width = video.videoWidth || 1280;
-  canvas.height = video.videoHeight || 720;
-  const ctx = canvas.getContext("2d");
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+  const ctx = canvas.getContext("2d", { alpha: false });
+  if (!ctx) { activeExport = false; throw new Error("Canvas မရရှိပါ"); }
 
-  const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-  const dest = audioCtx.createMediaStreamDestination();
+  let audioCtx = null;
+  let recorder = null;
+  let rafId = 0;
+  let stopped = false;
 
-  const vGain = audioCtx.createGain();
-  vGain.gain.value = document.getElementById("vol-video-slider").value / 100;
-  const aGain = audioCtx.createGain();
-  aGain.gain.value = document.getElementById("vol-ai-slider").value / 100;
-  const bGain = audioCtx.createGain();
-  bGain.gain.value = document.getElementById("vol-bgm-slider").value / 100;
-
-  try {
-    const vSource = audioCtx.createMediaElementSource(video);
-    vSource.connect(vGain);
-    vGain.connect(dest);
-  } catch (e) {}
-
-  try {
-    if (currentRecapAudio) {
-      const aSource = audioCtx.createMediaElementSource(currentRecapAudio);
-      aSource.connect(aGain);
-      aGain.connect(dest);
-    }
-  } catch (e) {}
-
-  try {
-    if (currentBgmAudio) {
-      const bSource = audioCtx.createMediaElementSource(currentBgmAudio);
-      bSource.connect(bGain);
-      bGain.connect(dest);
-    }
-  } catch (e) {}
-
-  const canvasStream = canvas.captureStream(30);
-  const combinedStream = new MediaStream([
-    ...canvasStream.getVideoTracks(),
-    ...dest.stream.getAudioTracks()
-  ]);
-
-  const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-    ? "video/webm;codecs=vp9,opus"
-    : "video/webm";
-
-  const recorder = new MediaRecorder(combinedStream, { mimeType });
-  const recordedChunks = [];
-
-  recorder.ondataavailable = (e) => {
-    if (e.data && e.data.size > 0) recordedChunks.push(e.data);
+  const cleanup = async () => {
+    cancelAnimationFrame(rafId);
+    video.pause();
+    currentRecapAudio?.pause();
+    currentBgmAudio?.pause();
+    // Keep the shared AudioContext alive so its MediaElementSource nodes
+    // remain valid for the next export.
+    activeExport = false;
+    exportBtn.disabled = false;
+    exportBtn.style.opacity = "1";
   };
 
-  recorder.onstop = () => {
-    const finalBlob = new Blob(recordedChunks, { type: "video/webm" });
+  try {
+    const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextCtor) throw new Error("AudioContext မထောက်ပံ့သော Browser ဖြစ်ပါသည်");
+
+    // A MediaElementSource can only be created once for a media element.
+    // Keep one AudioContext/graph alive across exports instead of closing it
+    // and trying to reuse nodes from a closed context.
+    if (!exportAudioGraph) {
+      const ctx = new AudioContextCtor();
+      exportAudioGraph = {
+        ctx,
+        dest: ctx.createMediaStreamDestination(),
+        nodes: new WeakMap()
+      };
+    }
+
+    audioCtx = exportAudioGraph.ctx;
+    const dest = exportAudioGraph.dest;
+
+    const connect = (mediaEl, volume) => {
+      if (!mediaEl) return;
+      let graph = exportAudioGraph.nodes.get(mediaEl);
+
+      if (!graph) {
+        const source = audioCtx.createMediaElementSource(mediaEl);
+        const gain = audioCtx.createGain();
+        source.connect(gain);
+        gain.connect(dest);
+        gain.connect(audioCtx.destination);
+        graph = { source, gain };
+        exportAudioGraph.nodes.set(mediaEl, graph);
+      }
+
+      graph.gain.gain.value = volume;
+    };
+
+    connect(video, Number(document.getElementById("vol-video-slider")?.value || 0) / 100);
+    connect(currentRecapAudio, Number(document.getElementById("vol-ai-slider")?.value || 100) / 100);
+    connect(currentBgmAudio, Number(document.getElementById("vol-bgm-slider")?.value || 35) / 100);
+
+    const canvasStream = canvas.captureStream(30);
+    const combinedStream = new MediaStream([
+      ...canvasStream.getVideoTracks(),
+      ...dest.stream.getAudioTracks()
+    ]);
+
+    const mimeType = [
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
+      "video/webm"
+    ].find(type => MediaRecorder.isTypeSupported(type));
+
+    if (!mimeType) throw new Error("ဒီ Browser မှာ Video Export format မထောက်ပံ့ပါ");
+
+    recorder = new MediaRecorder(combinedStream, {
+      mimeType,
+      videoBitsPerSecond: Math.min(8_000_000, Math.max(2_500_000, canvas.width * canvas.height * 3))
+    });
+
+    const chunks = [];
+    recorder.ondataavailable = e => { if (e.data?.size) chunks.push(e.data); };
+
+    const stoppedPromise = new Promise(resolve => { recorder.onstop = resolve; });
+
+    await audioCtx.resume();
+    video.currentTime = 0;
+    if (currentRecapAudio) currentRecapAudio.currentTime = 0;
+    if (currentBgmAudio && Number.isFinite(currentBgmAudio.duration)) currentBgmAudio.currentTime = 0;
+
+    const scaleX = canvas.width / Math.max(1, wrapper.clientWidth);
+    const scaleY = canvas.height / Math.max(1, wrapper.clientHeight);
+
+    const drawWrapped = (text, x, centerY, maxWidth, size) => {
+      const words = String(text || "").split(/\s+/);
+      const lines = [];
+      let line = "";
+      for (const word of words) {
+        const test = line ? `${line} ${word}` : word;
+        if (ctx.measureText(test).width > maxWidth && line) {
+          lines.push(line); line = word;
+        } else line = test;
+      }
+      if (line) lines.push(line);
+      const lh = size * 1.25;
+      lines.forEach((t, i) => ctx.fillText(t, x, centerY + (i - (lines.length - 1) / 2) * lh));
+    };
+
+    const renderFrame = () => {
+      if (stopped) return;
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      if (isBlurActive && blurEl.style.display !== "none") {
+        const bx = blurEl.offsetLeft * scaleX, by = blurEl.offsetTop * scaleY;
+        const bw = blurEl.clientWidth * scaleX, bh = blurEl.clientHeight * scaleY;
+        ctx.save();
+        ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.clip();
+        ctx.filter = "blur(18px)";
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+        ctx.restore();
+      }
+
+      if (isWatermarkActive && watermarkImg && wmEl.style.display !== "none") {
+        ctx.drawImage(watermarkImg,
+          wmEl.offsetLeft * scaleX, wmEl.offsetTop * scaleY,
+          wmEl.clientWidth * scaleX, wmEl.clientHeight * scaleY);
+      }
+
+      if (isTitleActive && titleEl.style.display !== "none") {
+        const x = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
+        const y = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
+        const size = Math.max(12, Math.round(titleFontSize * scaleY));
+        ctx.font = `bold ${size}px sans-serif`;
+        ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.shadowColor = "#000"; ctx.shadowBlur = 8; ctx.fillStyle = "#facc15";
+        drawWrapped(titleEl.innerText, x, y, canvas.width * 0.9, size);
+        ctx.shadowBlur = 0;
+      }
+
+      if (isSrtVisible && subEl.style.display !== "none") {
+        const cue = getCueAtTime(video.currentTime);
+        if (cue?.text) {
+          const x = (subEl.offsetLeft + subEl.clientWidth / 2) * scaleX;
+          const y = (subEl.offsetTop + subEl.clientHeight / 2) * scaleY;
+          const size = Math.max(12, Math.round(srtFontSize * scaleY));
+          const maxWidth = canvas.width * 0.86;
+          ctx.font = `bold ${size}px sans-serif`;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+
+          if (srtBgStyle === "stroke") {
+            ctx.strokeStyle = "#000"; ctx.lineWidth = Math.max(3, 5 * scaleX);
+            ctx.lineJoin = "round"; ctx.strokeText(cue.text, x, y);
+            ctx.fillStyle = srtFontColor; drawWrapped(cue.text, x, y, maxWidth, size);
+          } else {
+            const w = Math.min(maxWidth, ctx.measureText(cue.text).width) + 28 * scaleX;
+            const h = size + 16 * scaleY;
+            ctx.fillStyle = srtBgStyle;
+            ctx.beginPath(); ctx.roundRect(x - w / 2, y - h / 2, w, h, 8 * scaleX); ctx.fill();
+            ctx.fillStyle = srtFontColor; drawWrapped(cue.text, x, y, maxWidth, size);
+          }
+        }
+      }
+
+      const duration = Number.isFinite(video.duration) ? video.duration : 1;
+      const pct = Math.min(99, Math.round((video.currentTime / duration) * 100));
+      exportBar.style.width = `${pct}%`;
+      exportPercent.innerText = `${pct}%`;
+      rafId = requestAnimationFrame(renderFrame);
+    };
+
+    const stop = () => {
+      if (stopped) return;
+      stopped = true;
+      cancelAnimationFrame(rafId);
+      if (recorder?.state !== "inactive") recorder.stop();
+    };
+
+    recorder.start(1000);
+    video.onended = stop;
+    renderFrame();
+    await video.play();
+    currentRecapAudio?.play().catch(() => {});
+    currentBgmAudio?.play().catch(() => {});
+    await stoppedPromise;
+
+    const finalBlob = new Blob(chunks, { type: mimeType });
     const downloadUrl = URL.createObjectURL(finalBlob);
     const a = document.createElement("a");
     a.href = downloadUrl;
     a.download = `Recap_Final_${Date.now()}.webm`;
-    a.click();
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(downloadUrl), 5000);
 
     exportTitle.innerText = "ဗီဒီယို Download အောင်မြင်စွာ ရရှိပါပြီ!";
     exportBar.style.width = "100%";
     exportPercent.innerText = "100%";
-
-    setTimeout(() => {
-      exportBox.style.display = "none";
-      exportBtn.disabled = false;
-      exportBtn.style.opacity = "1";
-    }, 2500);
-  };
-
-  video.currentTime = 0;
-  if (currentRecapAudio) currentRecapAudio.currentTime = 0;
-  if (currentBgmAudio) currentBgmAudio.currentTime = 0;
-
-  recorder.start();
-  await video.play();
-  if (currentRecapAudio) currentRecapAudio.play();
-  if (currentBgmAudio) currentBgmAudio.play();
-
-  const scaleX = canvas.width / wrapper.clientWidth;
-  const scaleY = canvas.height / wrapper.clientHeight;
-
-  function renderLoop() {
-    if (video.paused || video.ended) return;
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-    if (isBlurActive && blurEl.style.display !== "none") {
-      const bx = blurEl.offsetLeft * scaleX;
-      const by = blurEl.offsetTop * scaleY;
-      const bw = blurEl.clientWidth * scaleX;
-      const bh = blurEl.clientHeight * scaleY;
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(bx, by, bw, bh);
-      ctx.clip();
-      ctx.filter = "blur(18px)";
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-      ctx.restore();
-    }
-
-    if (isWatermarkActive && watermarkImg && wmEl.style.display !== "none") {
-      const wx = wmEl.offsetLeft * scaleX;
-      const wy = wmEl.offsetTop * scaleY;
-      const ww = wmEl.clientWidth * scaleX;
-      const wh = wmEl.clientHeight * scaleY;
-      ctx.drawImage(watermarkImg, wx, wy, ww, wh);
-    }
-
-    if (isTitleActive && titleEl.style.display !== "none") {
-      const tx = (titleEl.offsetLeft + titleEl.clientWidth / 2) * scaleX;
-      const ty = (titleEl.offsetTop + titleEl.clientHeight / 2) * scaleY;
-      const dynamicTitleSize = Math.round(titleFontSize * scaleY);
-
-      ctx.font = `bold ${dynamicTitleSize}px sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-
-      ctx.shadowColor = "#000000";
-      ctx.shadowBlur = 8;
-      ctx.fillStyle = "#facc15";
-      ctx.fillText(titleEl.innerText, tx, ty);
-      ctx.shadowBlur = 0;
-    }
-
-    if (isSrtVisible && subEl.style.display !== "none") {
-      const currTime = video.currentTime;
-      const currentCue = recapSrtCues.find(c => currTime >= c.start && currTime <= c.end);
-
-      if (currentCue && currentCue.text) {
-        const sx = (subEl.offsetLeft + subEl.clientWidth / 2) * scaleX;
-        const sy = (subEl.offsetTop + subEl.clientHeight / 2) * scaleY;
-        const dynamicFontSize = Math.round(srtFontSize * scaleY);
-
-        ctx.font = `bold ${dynamicFontSize}px sans-serif`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-
-        if (srtBgStyle === "stroke") {
-          ctx.strokeStyle = "#000000";
-          ctx.lineWidth = 5 * scaleX;
-          ctx.strokeText(currentCue.text, sx, sy);
-          ctx.fillStyle = srtFontColor;
-          ctx.fillText(currentCue.text, sx, sy);
-        } else {
-          const textMetrics = ctx.measureText(currentCue.text);
-          const paddingX = 14 * scaleX;
-          const paddingY = 8 * scaleY;
-          const boxWidth = textMetrics.width + paddingX * 2;
-          const boxHeight = dynamicFontSize + paddingY * 2;
-
-          ctx.fillStyle = srtBgStyle;
-          ctx.beginPath();
-          ctx.roundRect(sx - boxWidth / 2, sy - boxHeight / 2, boxWidth, boxHeight, 8 * scaleX);
-          ctx.fill();
-
-          ctx.fillStyle = srtFontColor;
-          ctx.fillText(currentCue.text, sx, sy);
-        }
-      }
-    }
-
-    const pct = Math.min(99, Math.round((video.currentTime / video.duration) * 100));
-    exportBar.style.width = `${pct}%`;
-    exportPercent.innerText = `${pct}%`;
-
-    requestAnimationFrame(renderLoop);
+  } catch (err) {
+    exportTitle.innerText = `❌ ${err.message || "Export မအောင်မြင်ပါ"}`;
+  } finally {
+    await cleanup();
   }
-
-  video.onended = () => {
-    recorder.stop();
-    if (currentRecapAudio) currentRecapAudio.pause();
-    if (currentBgmAudio) currentBgmAudio.pause();
-  };
-
-  renderLoop();
 }
 
 if (document.readyState !== "loading") {
