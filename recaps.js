@@ -792,6 +792,8 @@ function arrayBufferToBase64(buffer) {
 
 // Prefer Opus/WebM: a 30-60s clip is usually tens/hundreds of KB instead of ~1-2MB WAV.
 // Falls back to the WAV path for browsers without MediaRecorder/captureStream.
+const MAX_RECAP_SECONDS = 600;
+
 async function extractAudioCompressed(file) {
   const video = document.createElement("video");
   const url = URL.createObjectURL(file);
@@ -807,6 +809,8 @@ async function extractAudioCompressed(file) {
       video.onerror = () => { clearTimeout(timer); reject(new Error("Video audio track မဖတ်နိုင်ပါ")); };
     });
 
+    if (!Number.isFinite(video.duration) || video.duration <= 0) throw new Error("Video duration မဖတ်နိုင်ပါ");
+    if (video.duration > MAX_RECAP_SECONDS) throw new Error(`Recap အတွက် ဗီဒီယိုအရှည်ကို ${MAX_RECAP_SECONDS / 60} မိနစ်အောက်ထားပေးပါ`);
     if (!video.captureStream || !window.MediaRecorder) throw new Error("compressed audio unsupported");
     const sourceStream = video.captureStream();
     const audioTracks = sourceStream.getAudioTracks();
@@ -845,7 +849,7 @@ async function extractAudioCompressed(file) {
     await new Promise(resolve => {
       const stop = () => { video.removeEventListener("ended", stop); resolve(); };
       video.addEventListener("ended", stop, { once: true });
-      setTimeout(stop, Math.min(60000, Math.max(1000, video.duration * 1000 + 500)));
+      setTimeout(stop, Math.min(MAX_RECAP_SECONDS * 1000 + 1000, Math.max(1000, video.duration * 1000 + 1000)));
     });
     if (recorder.state !== "inactive") recorder.stop();
     const result = await done;
@@ -870,6 +874,8 @@ async function extractAudioOptimized(file) {
   const audioCtx = new AudioContextCtor();
   try {
     const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+    if (!Number.isFinite(audioBuffer.duration) || audioBuffer.duration <= 0) throw new Error("Video audio duration မဖတ်နိုင်ပါ");
+    if (audioBuffer.duration > MAX_RECAP_SECONDS) throw new Error(`Recap အတွက် ဗီဒီယိုအရှည်ကို ${MAX_RECAP_SECONDS / 60} မိနစ်အောက်ထားပေးပါ`);
     const targetSampleRate = 16000;
     const maxSeconds = Math.min(audioBuffer.duration, 60);
     const targetLength = Math.max(1, Math.floor(maxSeconds * targetSampleRate));
@@ -921,6 +927,12 @@ async function streamRecapGeneration(payload) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 90000);
   try {
+    const audioChars = String(payload.audioBase64 || "").length;
+    const estimatedRequestBytes = Math.ceil(audioChars * 0.75) + 250000;
+    if (estimatedRequestBytes > 4000000) {
+      throw new Error("Recap request အရွယ်အစားကြီးလွန်းပါသည်။ ၁၀ မိနစ်အောက် video သို့မဟုတ် အသံဖိုင်ပိုမိုတိုသော clip ကို အသုံးပြုပါ။");
+    }
+
     const response = await fetch("/api/generate-recap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -934,7 +946,20 @@ async function streamRecapGeneration(payload) {
     }
 
     // NDJSON stream: {type:"stage",stage:"..."}\n ... {type:"result",script:"..."}\n
-    if (!response.body) return await response.json();
+    if (!response.body) {
+      const raw = await response.text();
+      const lines = raw.split("\n").filter(Boolean);
+      let fallbackResult = null;
+      for (const line of lines) {
+        const event = JSON.parse(line);
+        if (event.type === "stage") payload.onStage?.(event.stage);
+        if (event.type === "result") fallbackResult = event;
+        if (event.type === "error") throw new Error(event.error || "Recap generation failed");
+      }
+      if (!fallbackResult?.script) throw new Error("AI မှ Recap စာသား မရရှိပါ");
+      return fallbackResult;
+    }
+
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
     let buffer = "";
@@ -1003,7 +1028,7 @@ async function handleGenerateRecap() {
       extractVideoKeyframes(file)
     ]);
 
-    const actualVideoDuration = Math.max(1, Math.round(videoPlayer.duration || duration || 30));
+    const actualVideoDuration = Math.max(1, Math.round((Number.isFinite(videoPlayer.duration) ? videoPlayer.duration : 0) || duration || 30));
 
     pTitle.innerText = "AI က Recap စာသားရေးနေပါသည်...";
     pPercent.innerText = "55%";
