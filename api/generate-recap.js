@@ -2,14 +2,41 @@ const { GoogleGenAI } = require("@google/genai");
 const { Groq, toFile } = require("groq-sdk");
 
 // ============================================================
-// Recaps Studio - generate-recap.js
-// One Gemini multimodal call: audio + up to 2 images + prompt.
-// Groq is only a compatibility fallback.
+// Recaps Studio - api/generate-recap.js
+//
+// Primary: ONE Gemini multimodal request
+//   audio + up to 2 JPEG scene frames + prompt
+//
+// Fallback: Groq Whisper -> Groq text model
 // ============================================================
 
 const GEMINI_MODEL = process.env.GEMINI_RECAP_MODEL || "gemini-2.5-flash";
-const GROQ_RECAP_MODEL = process.env.GROQ_RECAP_MODEL || "openai/gpt-oss-120b";
-const GROQ_WHISPER_MODEL = process.env.GROQ_WHISPER_MODEL || "whisper-large-v3-turbo";
+
+// Only allow currently supported Groq recap models.
+// An old/invalid environment variable is ignored automatically.
+const ALLOWED_GROQ_MODELS = new Set([
+  "openai/gpt-oss-120b",
+  "openai/gpt-oss-20b",
+  "qwen/qwen3.8-27b"
+]);
+
+const configuredGroqModel = String(
+  process.env.GROQ_RECAP_MODEL || ""
+).trim();
+
+const GROQ_RECAP_MODEL = ALLOWED_GROQ_MODELS.has(configuredGroqModel)
+  ? configuredGroqModel
+  : "openai/gpt-oss-120b";
+
+const GROQ_RECAP_FALLBACK_MODEL =
+  GROQ_RECAP_MODEL === "openai/gpt-oss-20b"
+    ? "openai/gpt-oss-120b"
+    : "openai/gpt-oss-20b";
+
+const GROQ_WHISPER_MODEL =
+  process.env.GROQ_WHISPER_MODEL === "whisper-large-v3"
+    ? "whisper-large-v3"
+    : "whisper-large-v3-turbo";
 
 const gemini = process.env.GEMINI_API_KEY
   ? new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
@@ -18,6 +45,10 @@ const gemini = process.env.GEMINI_API_KEY
 const groq = process.env.GROQ_API_KEY
   ? new Groq({ apiKey: process.env.GROQ_API_KEY })
   : null;
+
+// ============================================================
+// HELPERS
+// ============================================================
 
 function cleanText(value) {
   return String(value || "")
@@ -30,17 +61,23 @@ function getMimeType(mime, base64) {
   if (typeof mime === "string" && mime.startsWith("audio/")) {
     return mime.split(";")[0].trim();
   }
+
   if (typeof base64 === "string" && base64.startsWith("UklGR")) {
     return "audio/wav";
   }
+
   return "audio/webm";
 }
 
 function sendEvent(res, payload) {
-  res.write(JSON.stringify(payload) + "\n");
+  try {
+    res.write(JSON.stringify(payload) + "\n");
+  } catch (_) {
+    // Client may have disconnected.
+  }
 }
 
-function errorMessage(err) {
+function getErrorMessage(err) {
   return String(
     err?.message ||
     err?.error?.message ||
@@ -50,32 +87,37 @@ function errorMessage(err) {
   );
 }
 
-function isOldGroqModelError(message) {
-  return /llama-3\.3-70b-versatile|model.*(does not exist|not found)|model_not_found/i.test(message);
-}
+// ============================================================
+// GEMINI - ONE MULTIMODAL API CALL
+// ============================================================
 
-// ------------------------------------------------------------
-// Gemini: ONE multimodal request
-// ------------------------------------------------------------
-async function generateWithGemini({ audioBase64, audioMimeType, frames, prompt }) {
+async function generateWithGemini({
+  audioBase64,
+  audioMimeType,
+  frames,
+  prompt
+}) {
   if (!gemini) {
     throw new Error("GEMINI_API_KEY မသတ်မှတ်ထားပါ");
   }
 
-  const parts = [
-    { text: prompt },
+  const contents = [
     {
       inlineData: {
         mimeType: getMimeType(audioMimeType, audioBase64),
         data: audioBase64
       }
+    },
+    {
+      text: prompt
     }
   ];
 
+  // Maximum 2 small JPEG scene frames.
   for (const frame of Array.isArray(frames) ? frames.slice(0, 2) : []) {
     if (typeof frame !== "string" || frame.length < 50) continue;
 
-    parts.push({
+    contents.push({
       inlineData: {
         mimeType: "image/jpeg",
         data: frame.replace(/^data:image\/[^;]+;base64,/, "")
@@ -85,29 +127,53 @@ async function generateWithGemini({ audioBase64, audioMimeType, frames, prompt }
 
   const response = await gemini.models.generateContent({
     model: GEMINI_MODEL,
-    contents: parts
+    contents
   });
 
-  const text = cleanText(response?.text);
-  if (!text) {
+  const script = cleanText(response?.text);
+
+  if (!script) {
     throw new Error("Gemini က Recap စာသား အလွတ်ပြန်ပေးခဲ့ပါတယ်");
   }
 
-  return text;
+  return script;
 }
 
-// ------------------------------------------------------------
-// Groq fallback: Whisper -> LLM
-// ------------------------------------------------------------
-async function generateWithGroq({ audioBase64, audioMimeType, prompt }) {
+// ============================================================
+// GROQ FALLBACK
+// Audio -> Whisper -> text model
+// ============================================================
+
+async function generateWithGroq({
+  audioBase64,
+  audioMimeType,
+  prompt
+}) {
   if (!groq) {
     throw new Error("GROQ_API_KEY မသတ်မှတ်ထားပါ");
   }
 
   const mime = getMimeType(audioMimeType, audioBase64);
-  const extension = mime.includes("webm") ? "webm" : mime.includes("wav") ? "wav" : "mp3";
-  const buffer = Buffer.from(audioBase64, "base64");
-  const file = await toFile(buffer, `recap-audio.${extension}`);
+  const extension = mime.includes("webm")
+    ? "webm"
+    : mime.includes("wav")
+      ? "wav"
+      : "mp3";
+
+  const audioBuffer = Buffer.from(audioBase64, "base64");
+
+  if (!audioBuffer.length) {
+    throw new Error("Audio data အလွတ်ဖြစ်နေပါတယ်");
+  }
+
+  const file = await toFile(
+    audioBuffer,
+    `recap-audio.${extension}`
+  );
+
+  // ----------------------------------------------------------
+  // Whisper
+  // ----------------------------------------------------------
 
   let transcript;
 
@@ -118,10 +184,10 @@ async function generateWithGroq({ audioBase64, audioMimeType, prompt }) {
       response_format: "json"
     });
   } catch (firstWhisperError) {
-    const firstMessage = errorMessage(firstWhisperError);
-
     if (GROQ_WHISPER_MODEL === "whisper-large-v3") {
-      throw new Error(`Groq Whisper error: ${firstMessage}`);
+      throw new Error(
+        `Groq Whisper မအောင်မြင်ပါ: ${getErrorMessage(firstWhisperError)}`
+      );
     }
 
     try {
@@ -132,67 +198,82 @@ async function generateWithGroq({ audioBase64, audioMimeType, prompt }) {
       });
     } catch (secondWhisperError) {
       throw new Error(
-        `Groq Whisper မအောင်မြင်ပါ: ${errorMessage(secondWhisperError)}`
+        `Groq Whisper မအောင်မြင်ပါ: ${getErrorMessage(secondWhisperError)}`
       );
     }
   }
 
   const transcriptText = cleanText(transcript?.text);
+
   if (!transcriptText) {
     throw new Error("Whisper မှ အသံစာသား မရပါ");
   }
 
-  const systemPrompt =
-    "You are a movie recap storyteller. Output ONLY fluent natural Burmese spoken-script text. No title, markdown, quotes, bullets, or explanation.";
+  // ----------------------------------------------------------
+  // Groq text model
+  // ----------------------------------------------------------
 
-  async function callModel(model) {
+  const systemPrompt =
+    "You are a movie recap storyteller. " +
+    "Output ONLY fluent natural Burmese spoken-script text. " +
+    "No title, markdown, quotes, bullets, or explanation.";
+
+  async function callTextModel(model) {
     const response = await groq.chat.completions.create({
       model,
       messages: [
-        { role: "system", content: systemPrompt },
+        {
+          role: "system",
+          content: systemPrompt
+        },
         {
           role: "user",
-          content: `${prompt}\n\nSOURCE AUDIO TRANSCRIPT:\n${transcriptText}`
+          content:
+            `${prompt}\n\n` +
+            `SOURCE AUDIO TRANSCRIPT:\n${transcriptText}`
         }
       ],
       temperature: 0.55,
       max_tokens: 700
     });
 
-    return cleanText(response?.choices?.[0]?.message?.content);
+    return cleanText(
+      response?.choices?.[0]?.message?.content
+    );
   }
 
   try {
-    const result = await callModel(GROQ_RECAP_MODEL);
+    const result = await callTextModel(GROQ_RECAP_MODEL);
+
     if (result) return result;
+
     throw new Error("Groq က အလွတ်စာသားပြန်ပေးခဲ့ပါတယ်");
   } catch (firstError) {
-    const firstMessage = errorMessage(firstError);
+    const firstMessage = getErrorMessage(firstError);
 
-    // Never call the retired llama-3.3-70b-versatile model.
-    if (GROQ_RECAP_MODEL === "qwen/qwen3.8-27b") {
-      throw new Error(`Groq recap error: ${firstMessage}`);
-    }
-
+    // Try another currently supported production model.
     try {
-      const result = await callModel("qwen/qwen3.8-27b");
+      const result = await callTextModel(
+        GROQ_RECAP_FALLBACK_MODEL
+      );
+
       if (result) return result;
-      throw new Error("Qwen က အလွတ်စာသားပြန်ပေးခဲ့ပါတယ်");
+
+      throw new Error(
+        "Groq fallback model က အလွတ်စာသားပြန်ပေးခဲ့ပါတယ်"
+      );
     } catch (secondError) {
-      const secondMessage = errorMessage(secondError);
-
-      if (isOldGroqModelError(firstMessage)) {
-        throw new Error(`Groq model error: ${secondMessage}`);
-      }
-
-      throw new Error(`Groq recap မအောင်မြင်ပါ: ${secondMessage}`);
+      throw new Error(
+        `Groq recap မအောင်မြင်ပါ: ${firstMessage} | Fallback: ${getErrorMessage(secondError)}`
+      );
     }
   }
 }
 
-// ------------------------------------------------------------
-// Vercel API handler
-// ------------------------------------------------------------
+// ============================================================
+// VERCEL API HANDLER
+// ============================================================
+
 module.exports = async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({
@@ -200,19 +281,46 @@ module.exports = async function handler(req, res) {
     });
   }
 
-  res.setHeader("Content-Type", "application/x-ndjson; charset=utf-8");
-  res.setHeader("Cache-Control", "no-cache, no-transform");
-  res.setHeader("X-Accel-Buffering", "no");
+  // NDJSON streaming response.
+  res.setHeader(
+    "Content-Type",
+    "application/x-ndjson; charset=utf-8"
+  );
+  res.setHeader(
+    "Cache-Control",
+    "no-cache, no-transform"
+  );
+  res.setHeader(
+    "X-Accel-Buffering",
+    "no"
+  );
 
   try {
     const body = req.body || {};
+
     const audioBase64 = body.audioBase64;
     const audioMimeType = body.audioMimeType;
-    const frames = Array.isArray(body.frames) ? body.frames : [];
-    const tone = String(body.tone || "dramatic");
-    const duration = Math.max(10, Math.min(600, Math.round(Number(body.videoDuration) || 30)));
+    const frames = Array.isArray(body.frames)
+      ? body.frames
+      : [];
+    const tone = String(
+      body.tone || "dramatic"
+    );
 
-    if (!audioBase64 || typeof audioBase64 !== "string") {
+    const duration = Math.max(
+      10,
+      Math.min(
+        600,
+        Math.round(
+          Number(body.videoDuration) || 30
+        )
+      )
+    );
+
+    if (
+      !audioBase64 ||
+      typeof audioBase64 !== "string"
+    ) {
       sendEvent(res, {
         type: "error",
         error: "အသံဖိုင်ဒေတာ မပါဝင်ပါ"
@@ -220,8 +328,16 @@ module.exports = async function handler(req, res) {
       return res.end();
     }
 
-    const targetWords = Math.max(25, Math.round((duration / 60) * 105));
-    const minWords = Math.max(18, targetWords - 12);
+    // Rough spoken-word target based on video duration.
+    const targetWords = Math.max(
+      25,
+      Math.round((duration / 60) * 105)
+    );
+
+    const minWords = Math.max(
+      18,
+      targetWords - 12
+    );
 
     const prompt = `
 You are an expert movie recap storyteller writing natural spoken Burmese.
@@ -235,7 +351,7 @@ TONE: ${tone}
 TARGET LENGTH: ${minWords}-${targetWords} Burmese spoken words
 
 RULES:
-- Preserve the important story events.
+- Preserve important story events.
 - Remove filler and repetition.
 - Use natural Burmese suitable for AI voice-over.
 - Use short spoken sentences and natural punctuation.
@@ -248,15 +364,25 @@ RULES:
 - No explanation.
 `;
 
-    sendEvent(res, { type: "stage", stage: "starting" });
+    // Keep these stage names compatible with the existing frontend.
+    sendEvent(res, {
+      type: "stage",
+      stage: "transcribing"
+    });
 
     let script = "";
     let geminiError = "";
     let groqError = "";
 
-    // Preferred: one Gemini multimodal API call.
+    // ----------------------------------------------------------
+    // PRIMARY: ONE GEMINI MULTIMODAL CALL
+    // ----------------------------------------------------------
+
     if (gemini) {
-      sendEvent(res, { type: "stage", stage: "ai" });
+      sendEvent(res, {
+        type: "stage",
+        stage: "writing"
+      });
 
       try {
         script = await generateWithGemini({
@@ -266,14 +392,23 @@ RULES:
           prompt
         });
       } catch (err) {
-        geminiError = errorMessage(err);
-        console.error("Gemini recap error:", geminiError);
+        geminiError = getErrorMessage(err);
+        console.error(
+          "Gemini recap error:",
+          geminiError
+        );
       }
     }
 
-    // Compatibility fallback.
+    // ----------------------------------------------------------
+    // FALLBACK: GROQ
+    // ----------------------------------------------------------
+
     if (!script && groq) {
-      sendEvent(res, { type: "stage", stage: "fallback" });
+      sendEvent(res, {
+        type: "stage",
+        stage: "transcribing"
+      });
 
       try {
         script = await generateWithGroq({
@@ -282,22 +417,39 @@ RULES:
           prompt
         });
       } catch (err) {
-        groqError = errorMessage(err);
-        console.error("Groq recap error:", groqError);
+        groqError = getErrorMessage(err);
+        console.error(
+          "Groq recap error:",
+          groqError
+        );
       }
     }
 
+    // ----------------------------------------------------------
+    // NO RESULT
+    // ----------------------------------------------------------
+
     if (!script) {
       const details = [
-        geminiError && `Gemini: ${geminiError}`,
-        groqError && `Groq: ${groqError}`
-      ].filter(Boolean).join(" | ");
+        geminiError
+          ? `Gemini: ${geminiError}`
+          : "",
+        groqError
+          ? `Groq: ${groqError}`
+          : ""
+      ]
+        .filter(Boolean)
+        .join(" | ");
 
       throw new Error(
         details ||
         "GEMINI_API_KEY သို့မဟုတ် GROQ_API_KEY မရှိပါ"
       );
     }
+
+    // ----------------------------------------------------------
+    // SUCCESS
+    // ----------------------------------------------------------
 
     sendEvent(res, {
       type: "result",
@@ -306,8 +458,12 @@ RULES:
 
     return res.end();
   } catch (err) {
-    const message = errorMessage(err);
-    console.error("generate-recap error:", message);
+    const message = getErrorMessage(err);
+
+    console.error(
+      "generate-recap error:",
+      message
+    );
 
     sendEvent(res, {
       type: "error",
